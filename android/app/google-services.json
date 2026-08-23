@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "445518370487",
+    "project_id": "wingapro-c343e",
+    "storage_bucket": "wingapro-c343e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:445518370487:android:9d41f1fe1c2044db015f32",
+        "android_client_info": {
+          "package_name": "com.example.wingapro_2frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoBlvr-LPbluHb31R-20SH7q1hHIXRkh4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
