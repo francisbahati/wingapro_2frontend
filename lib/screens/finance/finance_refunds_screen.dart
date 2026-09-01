@@ -1,7 +1,6 @@
 // lib/screens/finance/finance_refunds_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,10 +23,11 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _refunds = [];
   bool _isLoading = true;
+  bool _isUpdating = false;
+  int? _updatingRefundId;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isUpdating = false;
 
   @override
   void initState() {
@@ -52,7 +52,9 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _refunds = data['refunds']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _refunds = data['refunds']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -67,18 +69,23 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchRefunds);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _updateRefund(int id, String status, String reply) async {
     if (_isUpdating) return;
-    setState(() => _isUpdating = true);
+    setState(() {
+      _isUpdating = true;
+      _updatingRefundId = id;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -88,9 +95,11 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchRefunds();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Refund updated'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Refund updated'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -98,9 +107,14 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isUpdating = false);
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+          _updatingRefundId = null;
+        });
+      }
     }
   }
 
@@ -116,13 +130,13 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('Refund #${refund['id']}'),
         backgroundColor: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -151,7 +165,7 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: selectedStatus,
+                  initialValue: selectedStatus,
                   items: ['open', 'in_progress', 'closed']
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
@@ -160,7 +174,7 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
                     labelText: 'Status',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -176,7 +190,7 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
                     labelText: 'Admin Reply',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -190,14 +204,23 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              onPressed: _isUpdating ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: _isUpdating
+                ? null
+                : () {
               Navigator.pop(ctx);
               _updateRefund(refund['id'], selectedStatus,
                   replyController.text.trim());
             },
-            child: const Text('Update'),
+            child: (_isUpdating && _updatingRefundId == refund['id'])
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Text('Update'),
           ),
         ],
       ),
@@ -229,10 +252,11 @@ class _FinanceRefundsScreenState extends State<FinanceRefundsScreen> {
         itemCount: _refunds.length,
         itemBuilder: (ctx, i) {
           final r = _refunds[i];
+          final isUpdatingThis = _isUpdating && _updatingRefundId == r['id'];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               title: Text(
                 r['subject'],

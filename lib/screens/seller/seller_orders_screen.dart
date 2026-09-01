@@ -1,7 +1,6 @@
 // lib/screens/seller/seller_orders_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,10 +23,11 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _orders = [];
   bool _isLoading = true;
+  bool _isProcessing = false;
+  int? _processingOrderId;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isProcessing = false;
 
   @override
   void initState() {
@@ -52,7 +52,9 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _orders = data['orders'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _orders = data['orders'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -67,18 +69,23 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchOrders);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _markDelivered(int orderId) async {
     if (_isProcessing) return;
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _processingOrderId = orderId;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -87,10 +94,12 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order marked as delivered!'), backgroundColor: Colors.green),
-        );
         _fetchOrders();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Order marked as delivered!'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -98,9 +107,14 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _processingOrderId = null;
+        });
+      }
     }
   }
 
@@ -118,16 +132,18 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Reject', style: TextStyle(color: Colors.white)),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Reject', style: TextStyle(color: Colors.white))),
         ],
       ),
     );
     if (confirmed != true) return;
 
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _processingOrderId = orderId;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -136,10 +152,12 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order rejected and unassigned.'), backgroundColor: Colors.orange),
-        );
         _fetchOrders();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Order rejected and unassigned.'), backgroundColor: Colors.orange),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -147,9 +165,14 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _processingOrderId = null;
+        });
+      }
     }
   }
 
@@ -211,10 +234,11 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
           final earning = double.tryParse(
               order['sellerAmount']?.toString() ?? '') ??
               0.0;
+          final isProcessingThis = _isProcessing && _processingOrderId == order['id'];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -280,7 +304,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: _isProcessing
+                            onPressed: isProcessingThis
                                 ? null
                                 : () => _markDelivered(
                                 order['id']),
@@ -288,7 +312,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
                             ),
-                            child: _isProcessing
+                            child: isProcessingThis
                                 ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -301,7 +325,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: _isProcessing
+                            onPressed: isProcessingThis
                                 ? null
                                 : () => _rejectOrder(
                                 order['id']),
@@ -310,7 +334,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                               side: const BorderSide(
                                   color: Colors.red),
                             ),
-                            child: _isProcessing
+                            child: isProcessingThis
                                 ? const SizedBox(
                               width: 20,
                               height: 20,

@@ -1,14 +1,17 @@
+// main.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
-import 'firebase_options.dart';  // <-- generated file
+import 'package:flutter/widgets.dart';
+import 'firebase_options.dart';
 import 'services/theme_provider.dart';
 import 'services/notification_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/error_handler.dart';
+import 'services/fcm_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/buyer/buyerDashboardScreen.dart';
@@ -21,8 +24,6 @@ import 'screens/corporate_sales/corporate_sales_dashboard_screen.dart';
 import 'screens/showroom/showroom_dashboard_screen.dart';
 import 'screens/business_staff/business_staff_dashboard_screen.dart';
 
-
-
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // Background message handler (top-level function)
@@ -32,7 +33,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   debugPrint('📩 Background message: ${message.notification?.title}');
-  // You can show a local notification here if needed
 }
 
 void main() async {
@@ -59,8 +59,8 @@ void main() async {
   final token = await storage.read(key: 'jwt_token');
   final role = await storage.read(key: 'user_role');
 
-  // ✅ No polling started here; now relies on FCM updates
-  // (NotificationService().startPolling() removed)
+  // ✅ Initialize FCM service regardless of login status
+  await FcmService.init();
 
   Widget initialScreen;
   if (token != null && token.isNotEmpty) {
@@ -121,12 +121,16 @@ class WingaProApp extends StatefulWidget {
   State<WingaProApp> createState() => _WingaProAppState();
 }
 
-class _WingaProAppState extends State<WingaProApp> {
+class _WingaProAppState extends State<WingaProApp> with WidgetsBindingObserver {
   late ConnectivityService _connectivityService;
 
   @override
   void initState() {
     super.initState();
+    // Add lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+
+    // Connectivity service
     _connectivityService = ConnectivityService();
     _connectivityService.onConnectivityChanged.listen((isConnected) {
       if (!isConnected) {
@@ -137,6 +141,23 @@ class _WingaProAppState extends State<WingaProApp> {
     });
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _connectivityService.dispose();
+    super.dispose();
+  }
+
+  // ─── App Lifecycle ──────────────────────────────────────────────
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh unread notification count when app comes back to foreground
+      NotificationService().fetchUnreadCount();
+    }
+  }
+
+  // ─── Offline Banner ─────────────────────────────────────────────
   void _showOfflineBanner(BuildContext context) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
@@ -155,12 +176,6 @@ class _WingaProAppState extends State<WingaProApp> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _connectivityService.dispose();
-    super.dispose();
   }
 
   @override

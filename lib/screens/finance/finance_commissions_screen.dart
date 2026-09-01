@@ -1,7 +1,6 @@
 // lib/screens/finance/finance_commissions_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -23,6 +22,7 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isRefreshing = false;
   double _totalCommission = 0;
   List<dynamic> _commissions = [];
   Map<String, dynamic>? _targets;
@@ -37,6 +37,7 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
   }
 
   Future<void> _fetchCommissions() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -53,12 +54,14 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _totalCommission = data['totalCommission']?.toDouble() ?? 0;
-            _commissions = data['commissionsByPackage'] ?? [];
-            _targets = data['targets'];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _totalCommission = data['totalCommission']?.toDouble() ?? 0;
+              _commissions = data['commissionsByPackage'] ?? [];
+              _targets = data['targets'];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -73,13 +76,22 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchCommissions);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchCommissions();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   Widget _buildTargetItem(String label, int value, IconData icon, [Color? color]) {
@@ -116,7 +128,7 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         Card(
-          color: Colors.blue.shade50,
+          color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Shimmer(
@@ -145,7 +157,7 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
         ),
         const SizedBox(height: 16),
         Card(
-          color: Colors.green.shade50,
+          color: isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Shimmer(
@@ -180,15 +192,15 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
       isFullScreen: false,
     )
         : RefreshIndicator(
-      onRefresh: _fetchCommissions,
+      onRefresh: _refreshData,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (_targets != null)
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.blue.shade50.withOpacity(0.9),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.blue.shade50.withValues(alpha: 0.9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -219,8 +231,8 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.green.shade50.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.green.shade50.withValues(alpha: 0.9),
             child: Column(
               children: [
                 const Text('Total Commission',
@@ -257,8 +269,8 @@ class _FinanceCommissionsScreenState extends State<FinanceCommissionsScreen> {
           else
             ..._commissions.map((c) => GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 title: Text(
                   c['packageName'] ?? 'Unknown',

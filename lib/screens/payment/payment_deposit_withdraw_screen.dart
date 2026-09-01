@@ -8,130 +8,12 @@ import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
+import '../../services/error_handler.dart';
+import '../../services/notification_service.dart';
+import '../../widgets/error_snackbar.dart';
 
 enum TransactionType { deposit, withdraw }
 
-// ---------------------------------------------------------------------
-// Payment Service – supports polling and returns transaction reference
-// ---------------------------------------------------------------------
-class PaymentService {
-  final AuthService _auth = AuthService();
-  final ApiService _api = ApiService();
-
-  // Get current wallet balance
-  Future<double> getBalance(BuildContext context) async {
-    final token = await _auth.getToken();
-    if (token == null) throw Exception('Not logged in');
-    final response = await _api.get(
-      context,
-      '${ApiConfig.baseUrl}/api/wallet',
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data['success'] == true) {
-        return (data['balance'] ?? 0.0).toDouble();
-      }
-    }
-    throw Exception('Failed to fetch balance');
-  }
-
-  // Submit deposit/withdrawal – returns the transaction reference for polling
-  Future<String> submitTransaction({
-    required BuildContext context,
-    required TransactionType type,
-    required double amount,
-    required String phone,
-  }) async {
-    final token = await _auth.getToken();
-    if (token == null) throw Exception('Not logged in');
-
-    final role = await _auth.getUserRole();
-    final bool isSeller = role == 'seller';
-    final String basePath = isSeller ? '/api/seller' : '/api';
-    final String endpoint = type == TransactionType.deposit
-        ? '$basePath/wallet/deposit'
-        : '$basePath/wallet/withdraw';
-
-    final idempotencyKey = const Uuid().v4();
-
-    final response = await _api.post(
-      context,
-      '${ApiConfig.baseUrl}$endpoint',
-      body: {
-        'amount': amount,
-        'phone': phone,
-        'idempotencyKey': idempotencyKey,
-      },
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200 && data['success'] == true) {
-      // Extract the transaction reference from the response
-      final txRef = data['transaction']?['reference'];
-      if (txRef == null) {
-        throw Exception('No transaction reference returned');
-      }
-      return txRef.toString();
-    } else {
-      throw Exception(data['message'] ?? 'Transaction failed');
-    }
-  }
-
-  // Poll payment status – with timeout on each request
-  Future<Map<String, dynamic>> pollPaymentStatus({
-    required BuildContext context,
-    required String reference,
-    int maxAttempts = 60,             // 60 attempts * 5 seconds = 5 minutes
-    Duration interval = const Duration(seconds: 5),
-    Duration requestTimeout = const Duration(seconds: 10),
-  }) async {
-    int attempts = 0;
-    while (attempts < maxAttempts) {
-      attempts++;
-      try {
-        final token = await _auth.getToken();
-        if (token == null) throw Exception('Not logged in');
-
-        // 🔥 CRITICAL FIX: Add timeout to prevent indefinite hanging
-        final response = await _api.get(
-          context,
-          '${ApiConfig.baseUrl}/api/payments/$reference',
-        ).timeout(requestTimeout);
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['success'] == true) {
-            final tx = data['transaction'];
-            final status = tx['status'] ?? 'pending';
-            debugPrint('Poll #$attempts: status = $status');
-            if (status == 'completed' || status == 'failed') {
-              return {
-                'status': status,
-                'amount': tx['amount'] ?? 0.0,
-                'failureReason': tx['failureReason'] ?? null,
-              };
-            }
-          }
-        }
-      } on TimeoutException catch (_) {
-        debugPrint('Poll #$attempts timed out, will retry...');
-      } catch (e) {
-        debugPrint('Poll error: $e');
-      }
-      // Wait before next attempt
-      await Future.delayed(interval);
-    }
-    // Timeout – return a timeout status
-    return {
-      'status': 'timeout',
-      'failureReason': 'Payment confirmation timed out. Please check your wallet later.',
-    };
-  }
-}
-
-// ---------------------------------------------------------------------
-// Main Widget
-// ---------------------------------------------------------------------
 class PaymentDepositWithdrawScreen extends StatefulWidget {
   final bool allowWithdraw;
 
@@ -144,15 +26,23 @@ class PaymentDepositWithdrawScreen extends StatefulWidget {
 
 class _PaymentDepositWithdrawScreenState
     extends State<PaymentDepositWithdrawScreen> {
-  final PaymentService _paymentService = PaymentService();
+  final AuthService _auth = AuthService();
+  final ApiService _api = ApiService();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
   TransactionType _selectedType = TransactionType.deposit;
   bool _isLoading = false;
   double _balance = 0.0;
-  bool _isPolling = false; // to prevent multiple polls
-  bool _cancelledPolling = false; // set on dispose
+  bool _isPolling = false;
+  bool _cancelledPolling = false;
+
+  // For deposit polling (Snippe)
+  Timer? _pollTimer;
+  String? _currentReference;
+
+  // Tanzanian phone regex
+  final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
 
   @override
   void initState() {
@@ -162,17 +52,33 @@ class _PaymentDepositWithdrawScreenState
 
   @override
   void dispose() {
-    // Cancel any ongoing polling when the widget is disposed
-    _cancelledPolling = true;
+    _cancelPolling();
     _amountController.dispose();
     _phoneController.dispose();
+    _pollTimer?.cancel();
     super.dispose();
+  }
+
+  void _cancelPolling() {
+    _cancelledPolling = true;
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   Future<void> _loadData() async {
     try {
-      final balance = await _paymentService.getBalance(context);
-      if (mounted) setState(() => _balance = balance);
+      final token = await _auth.getToken();
+      if (token == null) return;
+      final response = await _api.get(
+        context,
+        '${ApiConfig.baseUrl}/api/wallet',
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          if (mounted) setState(() => _balance = (data['balance'] ?? 0.0).toDouble());
+        }
+      }
     } catch (e) {
       _showSnackBar('Error loading balance: $e', Colors.red);
     }
@@ -222,55 +128,6 @@ class _PaymentDepositWithdrawScreenState
     );
   }
 
-  // Background polling – updates balance when done, shows snackbar
-  Future<void> _pollForCompletion(String reference) async {
-    if (_isPolling) return;
-    _isPolling = true;
-
-    try {
-      final result = await _paymentService.pollPaymentStatus(
-        context: context,
-        reference: reference,
-        // You can adjust these to your preference
-        maxAttempts: 60,
-        interval: const Duration(seconds: 5),
-      );
-
-      // If cancelled while polling, don't show any snackbar
-      if (_cancelledPolling) return;
-
-      if (result['status'] == 'completed') {
-        // Refresh balance
-        await _loadData();
-        _showSnackBar(
-          '${_selectedType == TransactionType.deposit ? 'Deposit' : 'Withdrawal'} completed successfully!',
-          Colors.green,
-        );
-        // Clear fields on success
-        _amountController.clear();
-        _phoneController.clear();
-      } else if (result['status'] == 'failed') {
-        _showSnackBar(
-          'Transaction failed: ${result['failureReason'] ?? 'Unknown error'}',
-          Colors.red,
-        );
-      } else {
-        // Timeout
-        _showSnackBar(
-          result['failureReason'] ??
-              'Payment confirmation timed out. Please check your wallet later.',
-          Colors.orange,
-        );
-      }
-    } catch (e) {
-      if (!_cancelledPolling) {
-        _showSnackBar('Error checking payment status: $e', Colors.red);
-      }
-    } finally {
-      _isPolling = false;
-    }
-  }
-
   Future<void> _submitTransaction() async {
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) {
@@ -283,77 +140,244 @@ class _PaymentDepositWithdrawScreenState
       return;
     }
 
-    if (_selectedType == TransactionType.withdraw && amount > _balance) {
-      _showSnackBar(
-        'Insufficient balance. Available: ${_formatAmount(_balance)}',
-        Colors.red,
-      );
-      return;
+    if (_selectedType == TransactionType.withdraw) {
+      // 🔥 Minimum withdrawal check
+      if (amount < 25000) {
+        _showSnackBar('Minimum withdrawal is TZS 25,000', Colors.red);
+        return;
+      }
+      if (amount > _balance) {
+        _showSnackBar(
+          'Insufficient balance. Available: ${_formatAmount(_balance)}',
+          Colors.red,
+        );
+        return;
+      }
+      await _submitManualWithdrawal(amount);
+    } else {
+      await _submitDeposit(amount);
     }
+  }
 
+  Future<void> _submitDeposit(double amount) async {
     final digits = _phoneController.text.trim();
     if (digits.isEmpty) {
       _showSnackBar('Please enter your phone number', Colors.red);
       return;
     }
-    if (!RegExp(r'^\d{9}$').hasMatch(digits)) {
-      _showSnackBar('Please enter exactly 9 digits', Colors.red);
+    // Validate phone format
+    if (!_phoneRegex.hasMatch(digits)) {
+      _showSnackBar(
+        'Enter a valid Tanzanian mobile number (e.g., 0712345678)',
+        Colors.red,
+      );
       return;
     }
+    // Clean to 255 format
+    String cleaned = digits.replaceAll(RegExp(r'\s+'), '');
+    String fullPhone;
+    if (cleaned.startsWith('+255')) {
+      fullPhone = cleaned.substring(1);
+    } else if (cleaned.startsWith('0')) {
+      fullPhone = '255' + cleaned.substring(1);
+    } else if (cleaned.startsWith('255')) {
+      fullPhone = cleaned;
+    } else {
+      // assume it's 9 digits, prepend 255
+      fullPhone = '255' + cleaned;
+    }
 
-    final fullPhone = '255$digits';
-
-    // Confirm dialog
-    final confirmed = await _showConfirmationDialog(amount, fullPhone);
+    final confirmed = await _showConfirmationDialog(amount, fullPhone, isDeposit: true);
     if (confirmed != true) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final reference = await _paymentService.submitTransaction(
-        context: context,
-        type: _selectedType,
-        amount: amount,
-        phone: fullPhone,
+      final token = await _auth.getToken();
+      if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
+
+      final response = await _api.post(
+        context,
+        '${ApiConfig.baseUrl}/api/wallet/deposit',
+        body: {
+          'amount': amount,
+          'phone': fullPhone,
+          'idempotencyKey': const Uuid().v4(),
+        },
       );
 
-      // Show confirmation snackbar
-      _showSnackBar(
-        'Payment initiated. Please check your phone and complete the STK push.',
-        Colors.blue,
-      );
-
-      // Start background polling (no dialog)
-      _pollForCompletion(reference);
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        final txRef = data['transaction']?['reference'];
+        if (txRef != null) {
+          _showSnackBar(
+            'Deposit initiated. Please check your phone and complete the STK push.',
+            Colors.blue,
+          );
+          _pollForDepositCompletion(txRef);
+        } else {
+          throw Exception('No transaction reference returned');
+        }
+      } else {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: data['message'] ?? 'Deposit failed',
+        );
+      }
     } catch (e) {
-      _showSnackBar('Transaction failed: $e', Colors.red);
+      showErrorSnackbar(context, e);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pollForDepositCompletion(String reference) async {
+    _cancelledPolling = false;
+    _currentReference = reference;
+    int attempts = 0;
+    const maxAttempts = 60;
+    const interval = Duration(seconds: 5);
+
+    _pollTimer = Timer.periodic(interval, (timer) async {
+      attempts++;
+      if (_cancelledPolling) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final token = await _auth.getToken();
+        if (token == null) {
+          timer.cancel();
+          _cancelledPolling = true;
+          return;
+        }
+        final response = await _api.get(
+          context,
+          '${ApiConfig.baseUrl}/api/payments/$reference',
+        );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true) {
+            final status = data['transaction']['status'];
+            if (status == 'completed') {
+              timer.cancel();
+              _cancelledPolling = true;
+              if (mounted) {
+                setState(() => _isLoading = false);
+                _showSnackBar('Deposit completed successfully!', Colors.green);
+                _amountController.clear();
+                _phoneController.clear();
+                await _loadData();
+              }
+              return;
+            } else if (status == 'failed') {
+              timer.cancel();
+              _cancelledPolling = true;
+              if (mounted) {
+                setState(() => _isLoading = false);
+                _showSnackBar(
+                  'Deposit failed: ${data['transaction']['failureReason'] ?? 'Unknown error'}',
+                  Colors.red,
+                );
+              }
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (attempts >= maxAttempts) {
+        timer.cancel();
+        _cancelledPolling = true;
+        if (mounted) {
+          setState(() => _isLoading = false);
+          _showSnackBar(
+            'Deposit confirmation timed out. Please check your wallet later.',
+            Colors.orange,
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> _submitManualWithdrawal(double amount) async {
+    String? phone;
+    final digits = _phoneController.text.trim();
+    if (digits.isNotEmpty) {
+      if (!_phoneRegex.hasMatch(digits)) {
+        _showSnackBar(
+          'Enter a valid Tanzanian mobile number (e.g., 0712345678)',
+          Colors.red,
+        );
+        return;
+      }
+      // Clean to 255 format
+      String cleaned = digits.replaceAll(RegExp(r'\s+'), '');
+      if (cleaned.startsWith('+255')) {
+        phone = cleaned.substring(1);
+      } else if (cleaned.startsWith('0')) {
+        phone = '255' + cleaned.substring(1);
+      } else if (cleaned.startsWith('255')) {
+        phone = cleaned;
+      } else {
+        phone = '255' + cleaned;
+      }
+    }
+
+    final confirmed = await _showConfirmationDialog(amount, phone ?? 'Registered phone', isDeposit: false);
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _api.requestWithdrawal(
+        context,
+        amount: amount,
+        phone: phone,
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        _showSnackBar(
+          'Withdrawal request submitted. You will receive a notification when processed.',
+          Colors.green,
+        );
+        _amountController.clear();
+        _phoneController.clear();
+        await _loadData();
+        // Refresh notifications
+        await NotificationService().fetchUnreadCount();
+      } else {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: data['message'] ?? 'Withdrawal request failed',
+        );
+      }
+    } catch (e) {
+      showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<bool?> _showConfirmationDialog(double amount, String phone) async {
+  Future<bool?> _showConfirmationDialog(double amount, String phone, {required bool isDeposit}) async {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          _selectedType == TransactionType.deposit
-              ? 'Confirm Deposit'
-              : 'Confirm Withdrawal',
-        ),
+        title: Text(isDeposit ? 'Confirm Deposit' : 'Confirm Withdrawal'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Amount: ${_formatAmount(amount)}'),
             const SizedBox(height: 8),
-            Text('Phone: +$phone'),
+            Text('Phone: $phone'),
             const SizedBox(height: 16),
             Text(
-              _selectedType == TransactionType.deposit
+              isDeposit
                   ? 'You will receive an STK push on your phone to confirm the deposit.'
-                  : 'You will receive a confirmation SMS for the withdrawal.',
+                  : 'Your withdrawal request will be reviewed and processed manually.',
               style: TextStyle(color: Colors.grey[600]),
             ),
           ],
@@ -366,12 +390,9 @@ class _PaymentDepositWithdrawScreenState
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _selectedType == TransactionType.deposit
-                  ? Colors.green
-                  : Colors.orange,
+              backgroundColor: isDeposit ? Colors.green : Colors.orange,
             ),
-            child: Text(
-                _selectedType == TransactionType.deposit ? 'Deposit' : 'Withdraw'),
+            child: Text(isDeposit ? 'Deposit' : 'Withdraw'),
           ),
         ],
       ),
@@ -401,15 +422,13 @@ class _PaymentDepositWithdrawScreenState
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // Balance Card
                 Card(
                   elevation: 4,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 16, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFF0A2E5C), Color(0xFF1E88E5)],
@@ -424,8 +443,7 @@ class _PaymentDepositWithdrawScreenState
                           children: [
                             Text(
                               'Current Balance',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 14),
+                              style: TextStyle(color: Colors.white70, fontSize: 14),
                             ),
                             SizedBox(height: 4),
                           ],
@@ -444,7 +462,6 @@ class _PaymentDepositWithdrawScreenState
                 ),
                 const SizedBox(height: 20),
 
-                // Transaction Form
                 Card(
                   elevation: 8,
                   shape: RoundedRectangleBorder(
@@ -475,7 +492,6 @@ class _PaymentDepositWithdrawScreenState
                           const SizedBox(height: 20),
                         ],
 
-                        // Amount
                         TextFormField(
                           controller: _amountController,
                           keyboardType: TextInputType.number,
@@ -502,18 +518,16 @@ class _PaymentDepositWithdrawScreenState
                         ),
                         const SizedBox(height: 16),
 
-                        // Phone number (network auto-detected from prefix)
                         TextFormField(
                           controller: _phoneController,
-                          keyboardType: TextInputType.number,
-                          maxLength: 9,
+                          keyboardType: TextInputType.phone,
+                          maxLength: 15,
                           decoration: InputDecoration(
-                            labelText: 'Phone Number',
+                            labelText: 'Phone Number (optional for withdrawal)',
                             prefixIcon: Padding(
                               padding: const EdgeInsets.only(left: 4),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 margin: const EdgeInsets.only(right: 4),
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade200,
@@ -549,42 +563,35 @@ class _PaymentDepositWithdrawScreenState
                             ),
                             filled: true,
                             fillColor: Colors.grey.shade50,
-                            hintText: '743115286',
+                            hintText: '712345678',
                             counterText: '',
                             helperText:
-                            'Enter 9 digits after the country code',
+                            'Enter a valid Tanzanian mobile number (e.g., 0712345678)',
                             helperStyle: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600),
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
                           inputFormatters: [
                             FilteringTextInputFormatter.digitsOnly,
                           ],
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Phone number is required';
-                            }
-                            if (!RegExp(r'^\d{9}$').hasMatch(value.trim())) {
-                              return 'Enter exactly 9 digits';
-                            }
-                            return null;
-                          },
                         ),
                         const SizedBox(height: 8),
 
                         Text(
-                          'You will receive an STK push on your phone to complete the transaction.',
+                          _selectedType == TransactionType.deposit
+                              ? 'You will receive an STK push on your phone to complete the deposit.'
+                              : 'Your withdrawal request will be processed manually.',
                           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
                         const SizedBox(height: 24),
 
-                        // Submit button
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _submitTransaction,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _selectedType ==
-                                  TransactionType.deposit
+                              backgroundColor: _selectedType == TransactionType.deposit
                                   ? const Color(0xFF0A2E5C)
                                   : Colors.orange,
                               foregroundColor: Colors.white,
@@ -605,7 +612,7 @@ class _PaymentDepositWithdrawScreenState
                                 : Text(
                               _selectedType == TransactionType.deposit
                                   ? 'Initiate Deposit'
-                                  : 'Initiate Withdrawal',
+                                  : 'Request Withdrawal',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -617,15 +624,13 @@ class _PaymentDepositWithdrawScreenState
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
                 Text(
                   _selectedType == TransactionType.deposit
                       ? 'Your payment will be processed securely. '
                       'You will be prompted to confirm via SMS/STK Push.'
-                      : 'Withdrawal may take a few minutes. '
-                      'Ensure your phone number is correct.',
+                      : 'Withdrawal requests are reviewed by admin. '
+                      'You will receive a notification when completed.',
                   style: TextStyle(color: Colors.white70, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),

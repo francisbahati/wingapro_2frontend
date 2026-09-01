@@ -22,6 +22,8 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _purchases = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _isAssigning = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -29,6 +31,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
   String _startDate = '';
   String _endDate = '';
   final Map<int, List<dynamic>> _sellersCache = {};
+  final Map<int, int> _assigningIds = {};
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
   }
 
   Future<void> _fetchPurchases() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -58,7 +62,9 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _purchases = data['purchases']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _purchases = data['purchases']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -73,12 +79,14 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPurchases);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -100,13 +108,15 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
           return sellers;
         }
       }
-    } catch (e) {
-      // Silent fail - show empty list
-    }
+    } catch (_) {}
     return [];
   }
 
   Future<void> _assignSeller(int purchaseId, int sellerId) async {
+    setState(() {
+      _isAssigning = true;
+      _assigningIds[purchaseId] = sellerId;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -116,9 +126,11 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
       );
       if (response.statusCode == 200) {
         _fetchPurchases();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Seller assigned successfully'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Seller assigned successfully'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -126,7 +138,14 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAssigning = false;
+          _assigningIds.remove(purchaseId);
+        });
+      }
     }
   }
 
@@ -143,8 +162,11 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (_errorTitle != null) {
       return Scaffold(
+        backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         appBar: AppBar(
           title: const Text('All Purchases'),
           backgroundColor: Colors.transparent,
@@ -162,6 +184,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
     }
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('All Purchases'),
         backgroundColor: Colors.transparent,
@@ -178,7 +201,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DropdownButtonFormField<String>(
-                        value: _filterStatus.isEmpty ? null : _filterStatus,
+                        initialValue: _filterStatus.isEmpty ? null : _filterStatus,
                         hint: const Text('Status'),
                         items: [
                           const DropdownMenuItem(value: '', child: Text('All')),
@@ -234,8 +257,12 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
             final currentStatus = p['orderStatus'] ?? 'payment_received';
             final assignedSeller = p['assignedSeller'];
             final packageId = p['Package']?['id'];
+            final isAssigning = _assigningIds.containsKey(p['id']);
 
             return GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -243,8 +270,10 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Order #${p['id']}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold)),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          )),
                       Chip(
                         label: Text(
                             currentStatus.replaceAll('_', ' ')),
@@ -255,12 +284,25 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('User: ${p['User']?['username'] ?? 'User'}'),
+                  Text('User: ${p['User']?['username'] ?? 'User'}',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.grey.shade700,
+                      )),
                   Text(
-                      'Package: ${p['Package']?['name'] ?? 'Package'}'),
+                      'Package: ${p['Package']?['name'] ?? 'Package'}',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.grey.shade700,
+                      )),
                   Text(
-                      'Recipient: ${p['recipientName']} (${p['recipientPhone']})'),
-                  Text('Amount: TZS ${p['amount']}'),
+                      'Recipient: ${p['recipientName']} (${p['recipientPhone']})',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.grey.shade700,
+                      )),
+                  Text('Amount: TZS ${p['amount']}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black87,
+                      )),
                   if (assignedSeller != null)
                     Text('Assigned to: ${assignedSeller['username']}',
                         style: const TextStyle(color: Colors.blue)),
@@ -289,18 +331,20 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
                         int? currentSellerId =
                         assignedSeller?['id'] as int?;
                         return DropdownButtonFormField<int>(
+                          initialValue: currentSellerId,
                           decoration: const InputDecoration(
                             labelText: 'Assign / Reassign Seller',
                             border: OutlineInputBorder(),
                           ),
-                          value: currentSellerId,
                           items: sellers.map((seller) =>
                               DropdownMenuItem<int>(
                                 value: seller['id'] as int?,
                                 child: Text(seller['username'] ??
                                     'Unknown'),
                               )).toList(),
-                          onChanged: (sellerId) {
+                          onChanged: isAssigning
+                              ? null
+                              : (sellerId) {
                             if (sellerId != null) {
                               _assignSeller(p['id'], sellerId);
                             }

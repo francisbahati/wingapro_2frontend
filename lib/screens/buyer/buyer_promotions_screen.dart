@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _promotions = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -35,6 +35,7 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
   }
 
   Future<void> _fetchPromotions() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -51,7 +52,9 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _promotions = data['promotions'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _promotions = data['promotions'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -66,12 +69,14 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPromotions);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -81,23 +86,25 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
   }
 
   void _showBuyDialog(dynamic package) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final TextEditingController nameController = TextEditingController();
     final TextEditingController phoneController = TextEditingController();
+    final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Buy Package'),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -123,6 +130,7 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
                 labelText: 'Recipient Phone Number *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.phone),
+                helperText: 'e.g., 0712345678',
               ),
             ),
           ],
@@ -139,6 +147,15 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
                   const SnackBar(
                       content: Text('Please fill all fields'),
                       backgroundColor: Colors.red),
+                );
+                return;
+              }
+              if (!_phoneRegex.hasMatch(phone)) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Enter a valid Tanzanian mobile number'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
                 return;
               }
@@ -225,6 +242,9 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               elevation: 3,
+              color: isDark
+                  ? Colors.grey.shade800.withValues(alpha: 0.6)
+                  : Colors.white,
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: package != null
@@ -246,35 +266,51 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
                           Expanded(
                             child: Text(
                               p['title'] ?? 'Promotion',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 18,
-                                  fontWeight: FontWeight.bold),
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(p['description'] ?? ''),
+                      Text(
+                        p['description'] ?? '',
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.grey.shade700,
+                        ),
+                      ),
                       if (p['discount'] != null)
                         Chip(
                           label: Text('${p['discount']}% OFF'),
                           backgroundColor: Colors.green.shade100,
+                          labelStyle: TextStyle(
+                            color: isDark ? Colors.green.shade300 : Colors.green.shade700,
+                          ),
                         ),
                       if (p['validUntil'] != null)
                         Text(
                           'Valid until: ${DateFormat('dd/MM/yyyy').format(DateTime.parse(p['validUntil']))}',
                           style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey[600]),
+                              color: isDark ? Colors.white60 : Colors.grey.shade600),
                         ),
                       if (package != null) ...[
                         const Divider(),
                         Text('Package: ${package['name']}',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold)),
-                        Text('Network: ${package['network']}'),
-                        Text('Data: ${package['dataSize']}'),
-                        Text('Validity: ${package['validity']}'),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87)),
+                        Text('Network: ${package['network']}',
+                            style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.grey.shade700)),
+                        Text('Data: ${package['dataSize']}',
+                            style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.grey.shade700)),
+                        Text('Validity: ${package['validity']}',
+                            style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.grey.shade700)),
                         Text('Price: TZS ${package['displayPrice']}',
                             style: const TextStyle(
                                 color: Colors.blue)),
@@ -291,8 +327,11 @@ class _BuyerPromotionsScreenState extends State<BuyerPromotionsScreen> {
                                   color: Colors.white)),
                         ),
                       ] else
-                        const Text(
-                            'No package associated with this promotion.'),
+                        Text(
+                            'No package associated with this promotion.',
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                     ],
                   ),
                 ),

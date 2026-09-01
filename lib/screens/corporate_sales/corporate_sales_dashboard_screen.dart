@@ -1,7 +1,6 @@
 // lib/screens/corporate_sales/corporate_sales_dashboard_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -11,11 +10,11 @@ import '../../widgets/skeleton_loading.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/notification_icon.dart';
 import '../settings_screen.dart';
-import '../notification_screen.dart';
 import 'corporate_sales_clients_screen.dart';
 import 'corporate_sales_sellers_screen.dart';
 import 'corporate_sales_reports_screen.dart';
 import 'corporate_sales_profile_screen.dart';
+import 'corporate_sales_cash_purchase_screen.dart';
 
 class CorporateSalesDashboardScreen extends StatefulWidget {
   const CorporateSalesDashboardScreen({super.key});
@@ -30,6 +29,7 @@ class _CorporateSalesDashboardScreenState
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -51,6 +51,7 @@ class _CorporateSalesDashboardScreenState
   }
 
   Future<void> _fetchData() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -73,24 +74,26 @@ class _CorporateSalesDashboardScreenState
       if (profileRes.statusCode == 200) {
         final data = jsonDecode(profileRes.body);
         if (data['success'] == true) {
-          setState(() => _user = data['user']);
+          if (mounted) setState(() => _user = data['user']);
         }
       }
       if (statsRes.statusCode == 200) {
         final data = jsonDecode(statsRes.body);
         if (data['success'] == true) {
-          setState(() => _stats = data['stats']);
+          if (mounted) setState(() => _stats = data['stats']);
         }
       }
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -179,16 +182,16 @@ class _CorporateSalesDashboardScreenState
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.85)
-            : Colors.white.withOpacity(0.85),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+            : Colors.white.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+          color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -228,6 +231,7 @@ class _CorporateSalesDashboardScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final moreItems = [
+      {'label': 'Cash Sale', 'icon': Icons.attach_money, 'screen': const CorporateSalesCashPurchaseScreen()},
       {'label': 'Profile', 'icon': Icons.person, 'screen': const CorporateSalesProfileScreen()},
       {'label': 'Settings', 'icon': Icons.settings, 'screen': const SettingsScreen()},
     ];
@@ -240,11 +244,11 @@ class _CorporateSalesDashboardScreenState
         margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -257,7 +261,7 @@ class _CorporateSalesDashboardScreenState
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.3) : Colors.grey.shade400,
+                  color: isDark ? Colors.white.withValues(alpha: 0.3) : Colors.grey.shade400,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -295,11 +299,11 @@ class _CorporateSalesDashboardScreenState
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
             width: 1,
           ),
         ),
@@ -407,11 +411,11 @@ class _CorporateSalesDashboardScreenState
       ),
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
             width: 1,
           ),
         ),

@@ -13,7 +13,10 @@ class OrderConfirmationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Order Confirmed'),
         backgroundColor: const Color(0xFF0A2E5C),
@@ -36,14 +39,18 @@ class OrderConfirmationScreen extends StatelessWidget {
               const SizedBox(height: 24),
               Text(
                 '🎉 Imefanikiwa kununua kifurushi cha $packageName kutoka Winga Pro!',
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Asante kwa kutumia huduma zetu.',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 18,
+                  color: isDark ? Colors.white70 : Colors.grey.shade700,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),

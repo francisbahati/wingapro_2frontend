@@ -1,4 +1,4 @@
-// lib/screens/buyer/buyer_dashboard_screen.dart
+// lib/screens/buyer/buyerDashboardScreen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -25,10 +25,7 @@ import '../settings_screen.dart';
 // ================================================================
 class _AppColors {
   static const Color primary = Color(0xFF0A2E5C);
-  static const Color primaryLight = Color(0xFF1A4A7A);
-  static const Color accent = Color(0xFF0A2E5C);
   static const Color background = Color(0xFFF8FAFC);
-  static const Color cardBg = Color(0xFFFFFFFF);
   static const Color textPrimary = Color(0xFF1A2332);
   static const Color textSecondary = Color(0xFF64748B);
   static const Color textLight = Color(0xFF94A3B8);
@@ -134,15 +131,17 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
 
       _promotions = await _fetchPromotions(forceRefresh);
 
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: () => _loadData(forceRefresh: true));
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -190,14 +189,6 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
   // ================================================================
   // HELPERS
   // ================================================================
-  String _getInitials() {
-    final parts = _username.split(' ');
-    if (parts.length >= 2) {
-      return parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
-    }
-    return _username.isNotEmpty ? _username[0].toUpperCase() : 'U';
-  }
-
   void _navigateToNetworkPackages() {
     Navigator.push(
       context,
@@ -267,7 +258,7 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _loadData(forceRefresh: true),
-              color: _AppColors.accent,
+              color: _AppColors.primary,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -301,7 +292,6 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
                                 hintStyle: TextStyle(color: _AppColors.textLight),
                                 border: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                // Clear button (X) – only appears when text is not empty
                                 suffixIcon: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -365,7 +355,7 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: _AppColors.primary.withOpacity(0.3),
+                                color: _AppColors.primary.withValues(alpha: 0.3),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -543,7 +533,7 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
                   const Text('Filter Packages', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: localNetwork,
+                    initialValue: localNetwork,
                     decoration: const InputDecoration(
                       labelText: 'Network',
                       border: OutlineInputBorder(),
@@ -664,11 +654,11 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
               color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.10) : _AppColors.border,
+                color: isDark ? Colors.white.withValues(alpha: 0.10) : _AppColors.border,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 20,
                   offset: const Offset(0, -6),
                 ),
@@ -682,7 +672,7 @@ class _BuyerDashboardScreenState extends State<BuyerDashboardScreen> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.25) : Colors.grey.shade300,
+                    color: isDark ? Colors.white.withValues(alpha: 0.25) : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -766,14 +756,6 @@ class _HeaderSection extends StatelessWidget {
     required this.phone,
   });
 
-  String _getInitials() {
-    final parts = username.split(' ');
-    if (parts.length >= 2) {
-      return parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
-    }
-    return username.isNotEmpty ? username[0].toUpperCase() : 'U';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -811,7 +793,6 @@ class _HeaderSection extends StatelessWidget {
             ],
           ),
         ),
-        // ✅ Integrated NotificationIcon – preserved circular styling
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -829,6 +810,14 @@ class _HeaderSection extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  String _getInitials() {
+    final parts = username.split(' ');
+    if (parts.length >= 2) {
+      return parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
+    }
+    return username.isNotEmpty ? username[0].toUpperCase() : 'U';
   }
 }
 
@@ -850,10 +839,10 @@ class _TrustStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+        color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade200,
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade200,
         ),
         boxShadow: isDark ? [] : [
           BoxShadow(
@@ -872,7 +861,7 @@ class _TrustStrip extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _AppColors.primary.withOpacity(0.12),
+                  color: _AppColors.primary.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(p['icon'] as IconData, color: _AppColors.primary, size: 18),
@@ -983,7 +972,7 @@ class _PromotionCard extends StatelessWidget {
                     margin: const EdgeInsets.only(top: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: _AppColors.primary.withOpacity(0.12),
+                      color: _AppColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -1065,7 +1054,7 @@ class _FloatingBottomNav extends StatelessWidget {
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),

@@ -1,7 +1,6 @@
 // lib/screens/seller/seller_earnings_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -23,6 +22,7 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
   double _totalEarned = 0.0;
   double _pendingEscrow = 0.0;
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -34,6 +34,7 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
   }
 
   Future<void> _fetchEarnings() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -50,11 +51,13 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _totalEarned = (data['totalEarned'] ?? 0.0).toDouble();
-            _pendingEscrow = (data['pendingEscrow'] ?? 0.0).toDouble();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _totalEarned = (data['totalEarned'] ?? 0.0).toDouble();
+              _pendingEscrow = (data['pendingEscrow'] ?? 0.0).toDouble();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -69,13 +72,22 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchEarnings);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchEarnings();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   @override
@@ -115,14 +127,14 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
         itemBuilder: (_, __) => const SkeletonListTile(),
       )
           : RefreshIndicator(
-        onRefresh: _fetchEarnings,
+        onRefresh: _refreshData,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.green.shade50.withOpacity(0.9),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.green.shade50.withValues(alpha: 0.9),
               child: Column(
                 children: [
                   const Text(
@@ -144,8 +156,8 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
             const SizedBox(height: 16),
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.orange.shade50.withOpacity(0.9),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.orange.shade50.withValues(alpha: 0.9),
               child: Column(
                 children: [
                   const Text(
@@ -167,8 +179,8 @@ class _SellerEarningsScreenState extends State<SellerEarningsScreen> {
             const SizedBox(height: 16),
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.85),
               child: Column(
                 children: [
                   const Text(

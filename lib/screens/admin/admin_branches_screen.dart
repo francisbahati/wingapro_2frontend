@@ -1,7 +1,6 @@
 // lib/screens/admin/admin_branches_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
   List<dynamic> _branches = [];
   List<dynamic> _users = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -46,10 +46,10 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() => _users = data['users'] ?? []);
+          if (mounted) setState(() => _users = data['users'] ?? []);
         }
       }
-    } catch (e) {
+    } catch (_) {
       // Silent fail for users list - non-critical
     }
   }
@@ -71,7 +71,9 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _branches = data['branches'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _branches = data['branches'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -86,12 +88,14 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchBranches);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -113,6 +117,8 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       ),
     );
     if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -121,9 +127,11 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       );
       if (response.statusCode == 200) {
         _fetchBranches();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Branch deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Branch deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -131,11 +139,14 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   void _showAddBranchDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final nameController = TextEditingController();
     final locationController = TextEditingController();
     String selectedManagerId = '';
@@ -146,6 +157,17 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       barrierDismissible: !isCreating,
       builder: (ctx) => AlertDialog(
         title: const Text('Add Branch'),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
         content: Container(
           width: double.maxFinite,
           child: Column(
@@ -162,7 +184,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: selectedManagerId.isEmpty ? null : selectedManagerId,
+                initialValue: selectedManagerId.isEmpty ? null : selectedManagerId,
                 hint: const Text('Select Manager (optional)'),
                 items: _users.map((user) {
                   return DropdownMenuItem<String>(
@@ -211,11 +233,13 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
                 if (response.statusCode == 201 && data['success'] == true) {
                   Navigator.pop(ctx);
                   _fetchBranches();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Branch created'),
-                        backgroundColor: Colors.green),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Branch created'),
+                          backgroundColor: Colors.green),
+                    );
+                  }
                 } else {
                   throw ApiException(
                     statusCode: response.statusCode,
@@ -223,7 +247,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
                   );
                 }
               } catch (e) {
-                showErrorSnackbar(ctx, e);
+                if (mounted) showErrorSnackbar(ctx, e);
                 setState(() => isCreating = false);
               }
             },
@@ -238,6 +262,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
   }
 
   void _showEditBranchDialog(dynamic branch) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final nameController = TextEditingController(text: branch['name']);
     final locationController = TextEditingController(text: branch['location'] ?? '');
     String selectedManagerId = branch['managerId']?.toString() ?? '';
@@ -248,6 +273,17 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
       barrierDismissible: !isUpdating,
       builder: (ctx) => AlertDialog(
         title: const Text('Edit Branch'),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
         content: Container(
           width: double.maxFinite,
           child: Column(
@@ -264,7 +300,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: selectedManagerId.isEmpty ? null : selectedManagerId,
+                initialValue: selectedManagerId.isEmpty ? null : selectedManagerId,
                 hint: const Text('Select Manager (optional)'),
                 items: _users.map((user) {
                   return DropdownMenuItem<String>(
@@ -313,11 +349,13 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
                 if (response.statusCode == 200 && data['success'] == true) {
                   Navigator.pop(ctx);
                   _fetchBranches();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Branch updated'),
-                        backgroundColor: Colors.green),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Branch updated'),
+                          backgroundColor: Colors.green),
+                    );
+                  }
                 } else {
                   throw ApiException(
                     statusCode: response.statusCode,
@@ -325,7 +363,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
                   );
                 }
               } catch (e) {
-                showErrorSnackbar(ctx, e);
+                if (mounted) showErrorSnackbar(ctx, e);
                 setState(() => isUpdating = false);
               }
             },
@@ -351,7 +389,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
           backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
           elevation: 0,
           actions: [
-            IconButton(icon: const Icon(Icons.add), onPressed: _showAddBranchDialog),
+            IconButton(icon: const Icon(Icons.add), onPressed: _isSubmitting ? null : _showAddBranchDialog),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchBranches),
           ],
         ),
@@ -370,7 +408,7 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.add), onPressed: _showAddBranchDialog),
+          IconButton(icon: const Icon(Icons.add), onPressed: _isSubmitting ? null : _showAddBranchDialog),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchBranches),
         ],
       ),
@@ -402,8 +440,8 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
             final manager = b['manager'];
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF1A1A2E).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF1A1A2E).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: isDark
@@ -448,12 +486,19 @@ class _AdminBranchesScreenState extends State<AdminBranchesScreen> {
                     IconButton(
                       icon: const Icon(Icons.edit,
                           color: Colors.blue),
-                      onPressed: () => _showEditBranchDialog(b),
+                      onPressed: _isSubmitting ? null : () => _showEditBranchDialog(b),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.delete,
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.red),
+                      )
+                          : const Icon(Icons.delete,
                           color: Colors.red),
-                      onPressed: () => _deleteBranch(b['id']),
+                      onPressed: _isSubmitting ? null : () => _deleteBranch(b['id']),
                     ),
                   ],
                 ),

@@ -23,10 +23,12 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _tickets = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
   String _filterStatus = '';
+  int? _updatingTicketId;
 
   @override
   void initState() {
@@ -50,7 +52,9 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _tickets = data['tickets']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _tickets = data['tickets']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -65,12 +69,14 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchTickets);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -93,6 +99,10 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
     );
     if (confirm != true) return;
 
+    setState(() {
+      _isSubmitting = true;
+      _updatingTicketId = id;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -101,9 +111,11 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchTickets();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ticket deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ticket deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -111,11 +123,22 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _updatingTicketId = null;
+        });
+      }
     }
   }
 
   Future<void> _updateTicket(int id, String status, String? adminReply) async {
+    setState(() {
+      _isSubmitting = true;
+      _updatingTicketId = id;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -125,9 +148,11 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchTickets();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ticket updated'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ticket updated'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -135,19 +160,39 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _updatingTicketId = null;
+        });
+      }
     }
   }
 
   void _showTicketDialog(dynamic ticket) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final replyController =
     TextEditingController(text: ticket['adminReply'] ?? '');
     String selectedStatus = ticket['status'] ?? 'open';
 
     showDialog(
       context: context,
+      barrierDismissible: !_isSubmitting,
       builder: (ctx) => AlertDialog(
         title: Text('Ticket #${ticket['id']}'),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -158,7 +203,7 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
               Text('Message: ${ticket['message']}'),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: selectedStatus,
+                initialValue: selectedStatus,
                 items: ['open', 'in_progress', 'closed']
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
@@ -175,14 +220,23 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: _isSubmitting
+                ? null
+                : () {
               Navigator.pop(ctx);
               _updateTicket(ticket['id'], selectedStatus,
                   replyController.text.trim());
             },
-            child: const Text('Update'),
+            child: (_isSubmitting && _updatingTicketId == ticket['id'])
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Text('Update'),
           ),
         ],
       ),
@@ -212,6 +266,7 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
         itemCount: _tickets.length,
         itemBuilder: (ctx, i) {
           final t = _tickets[i];
+          final isDeleting = _isSubmitting && _updatingTicketId == t['id'];
           return Dismissible(
             key: Key(t['id'].toString()),
             direction: DismissDirection.horizontal,
@@ -226,6 +281,9 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
               child: const Icon(Icons.delete, color: Colors.white),
             ),
             child: GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 title: Text(t['subject']),
                 subtitle: Text(
@@ -243,11 +301,18 @@ class _AdminTicketsScreenState extends State<AdminTicketsScreen> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit, color: Colors.blue),
-                      onPressed: () => _showTicketDialog(t),
+                      onPressed: _isSubmitting ? null : () => _showTicketDialog(t),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteTicket(t['id']),
+                      icon: isDeleting
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.red),
+                      )
+                          : const Icon(Icons.delete, color: Colors.red),
+                      onPressed: isDeleting ? null : () => _deleteTicket(t['id']),
                     ),
                   ],
                 ),

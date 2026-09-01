@@ -1,12 +1,11 @@
 // lib/screens/corporate_sales/corporate_sales_reports_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
 import '../../services/error_handler.dart';
-import '../../widgets/skeleton_loading.dart';  // Provides local Shimmer widget
+import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/error_view.dart';
 
@@ -24,6 +23,7 @@ class _CorporateSalesReportsScreenState
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isRefreshing = false;
   Map<String, dynamic>? _report;
   String? _errorTitle;
   String? _errorMessage;
@@ -36,6 +36,7 @@ class _CorporateSalesReportsScreenState
   }
 
   Future<void> _fetchReport() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -52,7 +53,9 @@ class _CorporateSalesReportsScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _report = data['report']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _report = data['report']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -67,13 +70,22 @@ class _CorporateSalesReportsScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchReport);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchReport();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   @override
@@ -81,7 +93,7 @@ class _CorporateSalesReportsScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget body = _isLoading
-        ? _buildSkeletonLoading()
+        ? _buildSkeletonLoading(isDark)
         : _errorTitle != null
         ? ErrorView(
       title: _errorTitle!,
@@ -90,14 +102,14 @@ class _CorporateSalesReportsScreenState
       isFullScreen: false,
     )
         : RefreshIndicator(
-      onRefresh: _fetchReport,
+      onRefresh: _refreshData,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.blue.shade50.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.blue.shade50.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -120,7 +132,7 @@ class _CorporateSalesReportsScreenState
                   value: ((_report?['filledCustomers'] ?? 0) /
                       (_report?['totalCustomers'] ?? 1))
                       .toDouble(),
-                  backgroundColor: Colors.grey.shade300,
+                  backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
                   color: Colors.green,
                 ),
                 const SizedBox(height: 4),
@@ -136,8 +148,8 @@ class _CorporateSalesReportsScreenState
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -169,8 +181,8 @@ class _CorporateSalesReportsScreenState
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -241,8 +253,7 @@ class _CorporateSalesReportsScreenState
     );
   }
 
-  Widget _buildSkeletonLoading() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSkeletonLoading(bool isDark) {
     final baseColor = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
     final highlightColor = isDark ? Colors.grey.shade600 : Colors.grey.shade100;
 
@@ -250,7 +261,7 @@ class _CorporateSalesReportsScreenState
       padding: const EdgeInsets.all(16),
       children: [
         Card(
-          color: Colors.blue.shade50,
+          color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Shimmer(
@@ -274,6 +285,7 @@ class _CorporateSalesReportsScreenState
         ),
         const SizedBox(height: 16),
         Card(
+          color: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Shimmer(
@@ -307,6 +319,7 @@ class _CorporateSalesReportsScreenState
         ),
         const SizedBox(height: 16),
         Card(
+          color: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Shimmer(
@@ -382,7 +395,7 @@ class _CorporateSalesReportsScreenState
         ),
         LinearProgressIndicator(
           value: progress > 1 ? 1.0 : progress,
-          backgroundColor: Colors.grey.shade300,
+          backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
           color: progress >= 1 ? Colors.green : Colors.blue,
         ),
         const SizedBox(height: 8),

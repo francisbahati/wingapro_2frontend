@@ -22,10 +22,10 @@ class _AdminCorporateTargetsScreenState
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isSaving = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isSaving = false;
 
   final TextEditingController _salesTargetController = TextEditingController();
   final TextEditingController _clientTargetController = TextEditingController();
@@ -68,7 +68,7 @@ class _AdminCorporateTargetsScreenState
           _clientTargetController.text = targets['clientTarget']?.toString() ?? '50';
           _dealValueTargetController.text =
               targets['dealValueTarget']?.toString() ?? '1000000';
-          setState(() => _isLoading = false);
+          if (mounted) setState(() => _isLoading = false);
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -83,12 +83,14 @@ class _AdminCorporateTargetsScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchTargets);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -121,11 +123,13 @@ class _AdminCorporateTargetsScreenState
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Targets updated successfully'),
-              backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Targets updated successfully'),
+                backgroundColor: Colors.green),
+          );
+        }
         _fetchTargets();
       } else {
         throw ApiException(
@@ -134,7 +138,7 @@ class _AdminCorporateTargetsScreenState
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -191,8 +195,8 @@ class _AdminCorporateTargetsScreenState
           children: [
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -221,7 +225,7 @@ class _AdminCorporateTargetsScreenState
                       ),
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                     ),
                   ),
@@ -236,7 +240,7 @@ class _AdminCorporateTargetsScreenState
                       ),
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                     ),
                   ),
@@ -251,7 +255,7 @@ class _AdminCorporateTargetsScreenState
                       ),
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       prefixText: 'TZS ',
                     ),

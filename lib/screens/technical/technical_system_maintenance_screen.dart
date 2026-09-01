@@ -1,12 +1,14 @@
 // lib/screens/technical/technical_system_maintenance_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
+import '../../services/error_handler.dart';
 import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/error_view.dart';
+import '../../widgets/error_snackbar.dart';
 
 class TechnicalSystemMaintenanceScreen extends StatefulWidget {
   final bool showAppBar;
@@ -23,8 +25,8 @@ class _TechnicalSystemMaintenanceScreenState
   final ApiService _api = ApiService();
   Map<String, dynamic>? _status;
   bool _isLoading = true;
-  String? _error;
   bool _isProcessing = false;
+  String? _error;
 
   @override
   void initState() {
@@ -36,7 +38,7 @@ class _TechnicalSystemMaintenanceScreenState
     setState(() { _isLoading = true; _error = null; });
     try {
       final token = await _auth.getToken();
-      if (token == null) throw Exception('Not logged in');
+      if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
       final response = await _api.get(
         context,
         '${ApiConfig.baseUrl}/api/technical/maintenance',
@@ -44,15 +46,25 @@ class _TechnicalSystemMaintenanceScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _status = data['status']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _status = data['status']; _isLoading = false; });
+          }
         } else {
-          throw Exception(data['message'] ?? 'Failed to load maintenance status');
+          throw ApiException(
+            statusCode: response.statusCode,
+            message: data['message'] ?? 'Failed to load maintenance status',
+          );
         }
       } else {
-        throw Exception('Server error: ${response.statusCode}');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Server error: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted) {
+        setState(() { _error = e.toString(); _isLoading = false; });
+      }
     }
   }
 
@@ -68,21 +80,24 @@ class _TechnicalSystemMaintenanceScreenState
       );
       if (response.statusCode == 200) {
         _fetchStatus();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(enable
-                ? 'Maintenance mode enabled'
-                : 'Maintenance mode disabled'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(enable
+                  ? 'Maintenance mode enabled'
+                  : 'Maintenance mode disabled'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       } else {
-        throw Exception('Failed to toggle');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Failed to toggle',
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -93,7 +108,7 @@ class _TechnicalSystemMaintenanceScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget body = _isLoading
-        ? _buildSkeletonLoading()
+        ? _buildSkeletonLoading(isDark)
         : _error != null
         ? Center(
       child: Column(
@@ -119,8 +134,8 @@ class _TechnicalSystemMaintenanceScreenState
         children: [
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -158,8 +173,8 @@ class _TechnicalSystemMaintenanceScreenState
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -222,7 +237,7 @@ class _TechnicalSystemMaintenanceScreenState
     );
   }
 
-  Widget _buildSkeletonLoading() {
+  Widget _buildSkeletonLoading(bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [

@@ -1,7 +1,6 @@
 // lib/screens/admin/admin_users_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -75,12 +74,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() => _branches = data['branches']);
+          if (mounted) setState(() => _branches = data['branches']);
         }
       }
-    } catch (e) {
-      // Silent fail - non-critical
-    }
+    } catch (_) {}
   }
 
   Future<void> _fetchUsers() async {
@@ -102,7 +99,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _users = data['users']; _isLoading = false; });
+          if (mounted) setState(() { _users = data['users']; _isLoading = false; });
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -117,12 +114,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchUsers);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -143,7 +142,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     }
   }
 
@@ -172,9 +171,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       );
       if (response.statusCode == 200) {
         _fetchUsers();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -182,7 +183,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     }
   }
 
@@ -202,13 +203,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Add User'),
         backgroundColor: isDark
-            ? const Color(0xFF1A1A2E).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF1A1A2E).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -224,7 +224,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Username *',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -239,7 +239,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Email *',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -254,7 +254,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Phone',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -270,7 +270,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Password *',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -280,7 +280,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   items: [
                     'customer',
                     'seller',
@@ -298,7 +298,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Role',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -308,7 +308,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedBranchId.isEmpty ? null : selectedBranchId,
+                  initialValue: selectedBranchId.isEmpty ? null : selectedBranchId,
                   hint: const Text('Assign to Branch'),
                   items: _branches.map((b) => DropdownMenuItem<String>(
                     value: b['id'].toString(),
@@ -319,7 +319,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Branch',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -346,8 +346,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               if (username.isEmpty || email.isEmpty || password.isEmpty) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(
-                      content: Text(
-                          'Username, Email, and Password are required'),
+                      content: Text('Username, Email, and Password are required'),
                       backgroundColor: Colors.red),
                 );
                 return;
@@ -374,11 +373,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 if (response.statusCode == 201 && data['success'] == true) {
                   Navigator.pop(ctx);
                   _fetchUsers();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('User created'),
-                        backgroundColor: Colors.green),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('User created'),
+                          backgroundColor: Colors.green),
+                    );
+                  }
                 } else {
                   throw ApiException(
                     statusCode: response.statusCode,
@@ -386,7 +387,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   );
                 }
               } catch (e) {
-                showErrorSnackbar(ctx, e);
+                if (mounted) showErrorSnackbar(ctx, e);
                 setState(() => isCreating = false);
               }
             },
@@ -405,6 +406,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final usernameController = TextEditingController(text: user['username']);
     final emailController = TextEditingController(text: user['email']);
     final phoneController = TextEditingController(text: user['phone'] ?? '');
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
     String selectedRole = user['role'];
     String selectedBranchId = user['branchId']?.toString() ?? '';
     bool isUpdating = false;
@@ -415,13 +418,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Edit User'),
         backgroundColor: isDark
-            ? const Color(0xFF1A1A2E).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF1A1A2E).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -437,7 +439,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Username',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -452,7 +454,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Email',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -467,7 +469,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Phone',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
+                        : Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newPasswordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'New Password (leave empty to keep current)',
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
+                        : Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPasswordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm New Password',
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -477,7 +511,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   items: [
                     'customer',
                     'seller',
@@ -495,7 +529,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Role',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -505,7 +539,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedBranchId.isEmpty ? null : selectedBranchId,
+                  initialValue: selectedBranchId.isEmpty ? null : selectedBranchId,
                   hint: const Text('Assign to Branch'),
                   items: _branches.map((b) => DropdownMenuItem<String>(
                     value: b['id'].toString(),
@@ -516,7 +550,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     labelText: 'Branch',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -547,32 +581,61 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 );
                 return;
               }
+              // Check password fields
+              final newPw = newPasswordController.text.trim();
+              final confirmPw = confirmPasswordController.text.trim();
+              if (newPw.isNotEmpty || confirmPw.isNotEmpty) {
+                if (newPw.length < 6) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('New password must be at least 6 characters'),
+                        backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+                if (newPw != confirmPw) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('Passwords do not match'),
+                        backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+              }
+
               setState(() => isUpdating = true);
               try {
                 final token = await _auth.getToken();
                 if (token == null) throw Exception('Not logged in');
+                final body = {
+                  'username': username,
+                  'email': email,
+                  'phone': phoneController.text.trim(),
+                  'role': selectedRole,
+                  'branchId': selectedBranchId.isNotEmpty
+                      ? int.parse(selectedBranchId)
+                      : null,
+                };
+                // Only send password if it was provided
+                if (newPw.isNotEmpty) {
+                  body['password'] = newPw;
+                }
                 final response = await _api.put(
                   ctx,
                   '${ApiConfig.baseUrl}/api/admin/users/${user['id']}',
-                  body: {
-                    'username': username,
-                    'email': email,
-                    'phone': phoneController.text.trim(),
-                    'role': selectedRole,
-                    'branchId': selectedBranchId.isNotEmpty
-                        ? int.parse(selectedBranchId)
-                        : null,
-                  },
+                  body: body,
                 );
                 final data = jsonDecode(response.body);
                 if (response.statusCode == 200 && data['success'] == true) {
                   Navigator.pop(ctx);
                   _fetchUsers();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('User updated'),
-                        backgroundColor: Colors.green),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('User updated'),
+                          backgroundColor: Colors.green),
+                    );
+                  }
                 } else {
                   throw ApiException(
                     statusCode: response.statusCode,
@@ -580,7 +643,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   );
                 }
               } catch (e) {
-                showErrorSnackbar(ctx, e);
+                if (mounted) showErrorSnackbar(ctx, e);
                 setState(() => isUpdating = false);
               }
             },
@@ -619,8 +682,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           final u = _users[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF1A1A2E).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF1A1A2E).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: u['is_active'] ? Colors.green : Colors.red,
@@ -700,7 +763,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),

@@ -1,7 +1,6 @@
 // lib/screens/business_staff/business_staff_register_seller_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -31,6 +30,18 @@ class _BusinessStaffRegisterSellerScreenState
   String? _errorTitle;
   String? _errorMessage;
 
+  // Tanzanian phone regex
+  final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _registerSeller() async {
     if (_isLoading) return;
 
@@ -41,6 +52,12 @@ class _BusinessStaffRegisterSellerScreenState
 
     if (username.isEmpty || email.isEmpty || password.isEmpty) {
       _showSnackBar('Username, Email, and Password are required', Colors.red);
+      return;
+    }
+
+    // Validate phone if provided
+    if (phone.isNotEmpty && !_phoneRegex.hasMatch(phone)) {
+      _showSnackBar('Enter a valid Tanzanian mobile number (e.g., 0712345678)', Colors.red);
       return;
     }
 
@@ -63,15 +80,17 @@ class _BusinessStaffRegisterSellerScreenState
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 && data['success'] == true) {
-        _showSnackBar(
-          'Seller registered successfully! Awaiting admin approval.',
-          Colors.green,
-        );
-        _usernameController.clear();
-        _emailController.clear();
-        _phoneController.clear();
-        _passwordController.clear();
-        setState(() => _errorTitle = null);
+        if (mounted) {
+          _showSnackBar(
+            'Seller registered successfully! Awaiting admin approval.',
+            Colors.green,
+          );
+          _usernameController.clear();
+          _emailController.clear();
+          _phoneController.clear();
+          _passwordController.clear();
+          setState(() => _errorTitle = null);
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -80,10 +99,12 @@ class _BusinessStaffRegisterSellerScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+        });
+      }
       _showSnackBar(info.message, Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -91,6 +112,7 @@ class _BusinessStaffRegisterSellerScreenState
   }
 
   void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: color),
     );
@@ -134,8 +156,8 @@ class _BusinessStaffRegisterSellerScreenState
           children: [
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -156,7 +178,7 @@ class _BusinessStaffRegisterSellerScreenState
                       labelText: 'Username *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -173,7 +195,7 @@ class _BusinessStaffRegisterSellerScreenState
                       labelText: 'Email *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -190,7 +212,7 @@ class _BusinessStaffRegisterSellerScreenState
                       labelText: 'Phone (optional)',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -198,6 +220,11 @@ class _BusinessStaffRegisterSellerScreenState
                       ),
                       prefixIcon: const Icon(Icons.phone),
                       hintText: 'e.g., 0712345678',
+                      helperText: 'Valid Tanzanian mobile number',
+                      helperStyle: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.grey.shade600,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -208,7 +235,7 @@ class _BusinessStaffRegisterSellerScreenState
                       labelText: 'Password *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),

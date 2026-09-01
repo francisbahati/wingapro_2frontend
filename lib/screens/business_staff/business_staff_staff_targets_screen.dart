@@ -1,7 +1,6 @@
 // lib/screens/business_staff/business_staff_staff_targets_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _BusinessStaffStaffTargetsScreenState
   final ApiService _api = ApiService();
   List<dynamic> _staffTargets = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -35,6 +35,7 @@ class _BusinessStaffStaffTargetsScreenState
   }
 
   Future<void> _fetchStaffTargets() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -51,7 +52,9 @@ class _BusinessStaffStaffTargetsScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _staffTargets = data['staffTargets']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _staffTargets = data['staffTargets']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -66,12 +69,14 @@ class _BusinessStaffStaffTargetsScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchStaffTargets);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -123,8 +128,8 @@ class _BusinessStaffStaffTargetsScreenState
             final s = _staffTargets[i];
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ExpansionTile(
                 title: Text(
                   s['username'] ?? 'Unknown',

@@ -1,7 +1,6 @@
 // lib/screens/showroom/showroom_sell_package_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -36,11 +35,13 @@ class _ShowroomSellPackageScreenState
 
   bool _isLoading = false;
   bool _loadingData = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
 
   final List<String> _networks = ['Halotel', 'Tigo', 'Vodacom', 'Airtel'];
+  final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
 
   @override
   void initState() {
@@ -80,14 +81,15 @@ class _ShowroomSellPackageScreenState
         final packagesData = jsonDecode(packagesRes.body);
 
         if (customersData['success'] == true && packagesData['success'] == true) {
-          // Filter packages to only show customer packages (not seller)
           final allPackages = packagesData['packages'] ?? [];
           final customerPackages = allPackages.where((p) => p['packageType'] == 'customer').toList();
-          setState(() {
-            _customers = customersData['customers'] ?? [];
-            _allPackages = customerPackages;
-            _loadingData = false;
-          });
+          if (mounted) {
+            setState(() {
+              _customers = customersData['customers'] ?? [];
+              _allPackages = customerPackages;
+              _loadingData = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: 400,
@@ -102,12 +104,14 @@ class _ShowroomSellPackageScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _loadData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _loadingData = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _loadingData = false;
+        });
+      }
     }
   }
 
@@ -138,13 +142,13 @@ class _ShowroomSellPackageScreenState
       _showSnackBar('Recipient name and phone are required', Colors.red);
       return;
     }
-    // Validate phone format (simple)
-    if (!RegExp(r'^[0-9]{9,10}$').hasMatch(phone)) {
-      _showSnackBar('Phone must be 9 or 10 digits', Colors.red);
+    // Validate phone format
+    if (!_phoneRegex.hasMatch(phone)) {
+      _showSnackBar('Enter a valid Tanzanian mobile number (e.g., 0712345678)', Colors.red);
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _isSubmitting = true);
 
     try {
       final token = await _auth.getToken();
@@ -185,13 +189,14 @@ class _ShowroomSellPackageScreenState
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: color),
     );
@@ -247,8 +252,8 @@ class _ShowroomSellPackageScreenState
         children: [
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.95),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -265,14 +270,14 @@ class _ShowroomSellPackageScreenState
                 const SizedBox(height: 24),
                 // Customer dropdown
                 DropdownButtonFormField<int>(
-                  value: _selectedCustomerId,
+                  initialValue: _selectedCustomerId,
                   hint: const Text('Select Customer *'),
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Customer',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -289,7 +294,6 @@ class _ShowroomSellPackageScreenState
                   onChanged: (v) {
                     setState(() {
                       _selectedCustomerId = v;
-                      // Reset network and package when customer changes
                       _selectedNetwork = null;
                       _selectedPackageId = null;
                     });
@@ -298,14 +302,14 @@ class _ShowroomSellPackageScreenState
                 const SizedBox(height: 16),
                 // Network dropdown
                 DropdownButtonFormField<String>(
-                  value: _selectedNetwork,
+                  initialValue: _selectedNetwork,
                   hint: const Text('Select Network *'),
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Network',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -329,7 +333,7 @@ class _ShowroomSellPackageScreenState
                 const SizedBox(height: 16),
                 // Package dropdown
                 DropdownButtonFormField<int>(
-                  value: _selectedPackageId,
+                  initialValue: _selectedPackageId,
                   hint: _selectedNetwork == null
                       ? const Text('Select network first')
                       : const Text('Select Package *'),
@@ -338,7 +342,7 @@ class _ShowroomSellPackageScreenState
                     labelText: 'Package',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -373,7 +377,7 @@ class _ShowroomSellPackageScreenState
                     labelText: 'Recipient Name *',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -391,7 +395,7 @@ class _ShowroomSellPackageScreenState
                     labelText: 'Recipient Phone *',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -402,7 +406,7 @@ class _ShowroomSellPackageScreenState
                   ),
                 ),
                 const SizedBox(height: 24),
-                _isLoading
+                _isSubmitting
                     ? const Center(child: CircularProgressIndicator())
                     : ElevatedButton(
                   onPressed: _sellPackage,

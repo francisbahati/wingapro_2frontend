@@ -24,6 +24,7 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
   List<dynamic> _promotions = [];
   List<dynamic> _packages = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -60,11 +61,13 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
           final customerPkgs = allPkgs
               .where((p) => p['packageType'] == 'customer')
               .toList();
-          setState(() {
-            _promotions = promoData['promotions'] ?? [];
-            _packages = customerPkgs;
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _promotions = promoData['promotions'] ?? [];
+              _packages = customerPkgs;
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: 400,
@@ -81,12 +84,14 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -107,6 +112,8 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
       ),
     );
     if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -115,9 +122,11 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchData();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Promotion deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Promotion deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -125,7 +134,9 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -170,7 +181,7 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'Discount % *')),
                 DropdownButtonFormField<int>(
-                  value: selectedPackageId,
+                  initialValue: selectedPackageId,
                   hint: const Text('Select Customer Package (optional)'),
                   items: [
                     const DropdownMenuItem<int>(value: null, child: Text('None')),
@@ -289,13 +300,15 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
                     if (data['success'] == true) {
                       Navigator.pop(ctx);
                       _fetchData();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text(isEditing
-                                ? 'Promotion updated'
-                                : 'Promotion created'),
-                            backgroundColor: Colors.green),
-                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text(isEditing
+                                  ? 'Promotion updated'
+                                  : 'Promotion created'),
+                              backgroundColor: Colors.green),
+                        );
+                      }
                     } else {
                       throw ApiException(
                         statusCode: response.statusCode,
@@ -310,7 +323,7 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
                     );
                   }
                 } catch (e) {
-                  showErrorSnackbar(ctx, e);
+                  if (mounted) showErrorSnackbar(ctx, e);
                   setStateDialog(() => isSubmitting = false);
                 }
               },
@@ -327,15 +340,18 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (_errorTitle != null) {
       return Scaffold(
+        backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         appBar: AppBar(
           title: const Text('Manage Promotions'),
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
             IconButton(icon: const Icon(Icons.add),
-                onPressed: () => _showAddEditDialog()),
+                onPressed: _isSubmitting ? null : () => _showAddEditDialog()),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
           ],
         ),
@@ -348,13 +364,14 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
     }
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Manage Promotions'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.add),
-              onPressed: () => _showAddEditDialog()),
+              onPressed: _isSubmitting ? null : () => _showAddEditDialog()),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
         ],
       ),
@@ -373,7 +390,7 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
             const Text('No promotions created yet.'),
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: () => _showAddEditDialog(),
+              onPressed: _isSubmitting ? null : () => _showAddEditDialog(),
               style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0A2E5C)),
               child: const Text('Add Promotion'),
@@ -390,6 +407,9 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
             final p = _promotions[i];
             final package = p['Package'];
             return GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor:
@@ -418,13 +438,20 @@ class _AdminPromotionsScreenState extends State<AdminPromotionsScreen> {
                     IconButton(
                       icon: const Icon(Icons.edit,
                           color: Colors.blue),
-                      onPressed: () =>
+                      onPressed: _isSubmitting ? null : () =>
                           _showAddEditDialog(promotion: p),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.delete,
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.red),
+                      )
+                          : const Icon(Icons.delete,
                           color: Colors.red),
-                      onPressed: () =>
+                      onPressed: _isSubmitting ? null : () =>
                           _deletePromotion(p['id']),
                     ),
                   ],

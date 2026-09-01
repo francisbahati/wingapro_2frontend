@@ -1,7 +1,6 @@
 // lib/screens/corporate_sales/corporate_sales_sellers_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -26,9 +25,13 @@ class _CorporateSalesSellersScreenState
   final ApiService _api = ApiService();
   List<dynamic> _sellers = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
+
+  // Tanzanian phone regex
+  final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
 
   @override
   void initState() {
@@ -53,7 +56,9 @@ class _CorporateSalesSellersScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _sellers = data['sellers'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _sellers = data['sellers'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -68,15 +73,18 @@ class _CorporateSalesSellersScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchSellers);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  // ─── REGISTER SELLER ───
   Future<void> _registerSeller() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final usernameController = TextEditingController();
@@ -93,13 +101,13 @@ class _CorporateSalesSellersScreenState
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Register Seller'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -115,7 +123,7 @@ class _CorporateSalesSellersScreenState
                       labelText: 'Username *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -130,7 +138,7 @@ class _CorporateSalesSellersScreenState
                       labelText: 'Email *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -145,7 +153,7 @@ class _CorporateSalesSellersScreenState
                       labelText: 'Phone',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -161,7 +169,7 @@ class _CorporateSalesSellersScreenState
                       labelText: 'Password *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -192,11 +200,22 @@ class _CorporateSalesSellersScreenState
                 final username = usernameController.text.trim();
                 final email = emailController.text.trim();
                 final password = passwordController.text.trim();
+                final phone = phoneController.text.trim();
                 if (username.isEmpty || email.isEmpty || password.isEmpty) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(
                         content: Text('Fill all required fields'),
                         backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+                // Validate phone if provided
+                if (phone.isNotEmpty && !_phoneRegex.hasMatch(phone)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Enter a valid Tanzanian mobile number'),
+                      backgroundColor: Colors.red,
+                    ),
                   );
                   return;
                 }
@@ -209,7 +228,7 @@ class _CorporateSalesSellersScreenState
                     body: {
                       'username': username,
                       'email': email,
-                      'phone': phoneController.text.trim(),
+                      'phone': phone,
                       'password': password,
                     },
                   );
@@ -218,11 +237,13 @@ class _CorporateSalesSellersScreenState
                       data['success'] == true) {
                     Navigator.pop(ctx);
                     _fetchSellers();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Seller registered'),
-                          backgroundColor: Colors.green),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Seller registered'),
+                            backgroundColor: Colors.green),
+                      );
+                    }
                   } else {
                     throw ApiException(
                       statusCode: response.statusCode,
@@ -230,7 +251,7 @@ class _CorporateSalesSellersScreenState
                     );
                   }
                 } catch (e) {
-                  showErrorSnackbar(ctx, e);
+                  if (mounted) showErrorSnackbar(ctx, e);
                   setStateDialog(() => isSubmitting = false);
                 }
               },
@@ -243,6 +264,228 @@ class _CorporateSalesSellersScreenState
         ),
       ),
     );
+  }
+
+  // ─── EDIT SELLER ───
+  Future<void> _editSeller(dynamic seller) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final usernameController = TextEditingController(text: seller['username']);
+    final emailController = TextEditingController(text: seller['email']);
+    final phoneController = TextEditingController(text: seller['phone'] ?? '');
+    bool isActive = seller['is_active'] ?? true;
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: !isSubmitting,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Edit Seller'),
+          backgroundColor: isDark
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
+              width: 1.5,
+            ),
+          ),
+          content: Container(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: usernameController,
+                    decoration: InputDecoration(
+                      labelText: 'Username *',
+                      filled: true,
+                      fillColor: isDark
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
+                          : Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    decoration: InputDecoration(
+                      labelText: 'Email *',
+                      filled: true,
+                      fillColor: isDark
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
+                          : Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneController,
+                    decoration: InputDecoration(
+                      labelText: 'Phone',
+                      filled: true,
+                      fillColor: isDark
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
+                          : Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    title: const Text('Active'),
+                    value: isActive,
+                    onChanged: (v) => setStateDialog(() => isActive = v),
+                    tileColor: Colors.transparent,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                final username = usernameController.text.trim();
+                final email = emailController.text.trim();
+                final phone = phoneController.text.trim();
+                if (username.isEmpty || email.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('Username and Email are required'),
+                        backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+                if (phone.isNotEmpty && !_phoneRegex.hasMatch(phone)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Enter a valid Tanzanian mobile number'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                setStateDialog(() => isSubmitting = true);
+                try {
+                  final token = await _auth.getToken();
+                  final response = await _api.put(
+                    ctx,
+                    '${ApiConfig.baseUrl}/api/corporate-sales/sellers/${seller['id']}',
+                    body: {
+                      'username': username,
+                      'email': email,
+                      'phone': phone,
+                      'is_active': isActive,
+                    },
+                  );
+                  final data = jsonDecode(response.body);
+                  if (response.statusCode == 200 &&
+                      data['success'] == true) {
+                    Navigator.pop(ctx);
+                    _fetchSellers();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Seller updated'),
+                            backgroundColor: Colors.green),
+                      );
+                    }
+                  } else {
+                    throw ApiException(
+                      statusCode: response.statusCode,
+                      message: data['message'] ?? 'Failed to update',
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) showErrorSnackbar(ctx, e);
+                  setStateDialog(() => isSubmitting = false);
+                }
+              },
+              child: isSubmitting
+                  ? const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── DELETE SELLER ───
+  Future<void> _deleteSeller(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Seller'),
+        content: const Text('Are you sure you want to delete this seller?'),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      final token = await _auth.getToken();
+      final response = await _api.delete(
+        context,
+        '${ApiConfig.baseUrl}/api/corporate-sales/sellers/$id',
+      );
+      if (response.statusCode == 200) {
+        _fetchSellers();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Seller deleted'), backgroundColor: Colors.green),
+          );
+        }
+      } else {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Failed to delete',
+        );
+      }
+    } catch (e) {
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -283,8 +526,8 @@ class _CorporateSalesSellersScreenState
           final s = _sellers[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 child: Text(
@@ -304,11 +547,31 @@ class _CorporateSalesSellersScreenState
                       : Colors.grey.shade700,
                 ),
               ),
-              trailing: Chip(
-                label: Text(s['is_active'] ? 'Active' : 'Inactive'),
-                backgroundColor:
-                s['is_active'] ? Colors.green : Colors.red,
-                labelStyle: const TextStyle(color: Colors.white),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Chip(
+                    label: Text(s['is_active'] ? 'Active' : 'Inactive'),
+                    backgroundColor:
+                    s['is_active'] ? Colors.green : Colors.red,
+                    labelStyle: const TextStyle(color: Colors.white),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: _isSubmitting ? null : () => _editSeller(s),
+                  ),
+                  IconButton(
+                    icon: _isSubmitting
+                        ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.red),
+                    )
+                        : const Icon(Icons.delete, color: Colors.red),
+                    onPressed: _isSubmitting ? null : () => _deleteSeller(s['id']),
+                  ),
+                ],
               ),
             ),
           );
@@ -320,7 +583,7 @@ class _CorporateSalesSellersScreenState
       return Scaffold(
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         floatingActionButton: FloatingActionButton(
-          onPressed: _registerSeller,
+          onPressed: _isSubmitting ? null : _registerSeller,
           backgroundColor: const Color(0xFF0A2E5C),
           child: const Icon(Icons.add, color: Colors.white),
         ),
@@ -338,7 +601,7 @@ class _CorporateSalesSellersScreenState
         foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _registerSeller,
+        onPressed: _isSubmitting ? null : _registerSeller,
         backgroundColor: const Color(0xFF0A2E5C),
         child: const Icon(Icons.add, color: Colors.white),
       ),

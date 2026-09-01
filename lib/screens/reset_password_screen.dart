@@ -55,41 +55,49 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Password reset successful! Please login.'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Password reset successful! Please login.'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        }
       } else {
+        if (mounted) {
+          showErrorSnackbar(
+            context,
+            ApiException(
+              statusCode: response.statusCode,
+              message: data['message'] ?? 'Reset failed. Please try again.',
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
+      }
+    } on TimeoutException {
+      if (mounted) {
         showErrorSnackbar(
           context,
           ApiException(
-            statusCode: response.statusCode,
-            message: data['message'] ?? 'Reset failed. Please try again.',
+            statusCode: null,
+            message: 'Connection timeout. Please check your internet and try again.',
           ),
         );
         setState(() => _isLoading = false);
       }
-    } on TimeoutException {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'Connection timeout. Please check your internet and try again.',
-        ),
-      );
-      setState(() => _isLoading = false);
     } catch (e) {
-      showErrorSnackbar(context, e);
-      setState(() => _isLoading = false);
+      if (mounted) {
+        showErrorSnackbar(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -117,12 +125,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: Card(
                 elevation: 0,
                 color: isDark
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.white.withOpacity(0.15),
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                   side: BorderSide(
-                    color: Colors.white.withOpacity(isDark ? 0.08 : 0.2),
+                    color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -179,8 +187,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty)
@@ -203,8 +211,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty)
@@ -239,8 +247,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                                 helperText:
                                 'Min 8 characters, at least one letter and one number',
                                 helperStyle: TextStyle(
@@ -282,8 +290,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) =>
                               v != _passwordController.text.trim()

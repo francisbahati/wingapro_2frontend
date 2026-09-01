@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -89,11 +88,13 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _allPackages = data['packages'] ?? [];
-            _applyFilter();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _allPackages = data['packages'] ?? [];
+              _applyFilter();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -108,12 +109,14 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPackages);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -129,7 +132,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         return name.contains(query);
       }).toList();
     }
-    setState(() => _filteredPackages = filtered);
+    if (mounted) setState(() => _filteredPackages = filtered);
   }
 
   String _formatPrice(dynamic value) {
@@ -193,13 +196,13 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         builder: (ctx, setStateDialog) => AlertDialog(
           title: Text(isEdit ? 'Edit Package' : 'Add New Package'),
           backgroundColor: isDark
-              ? const Color(0xFF1A1A2E).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF1A1A2E).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -239,7 +242,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       labelText: 'Package Name *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -255,7 +258,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       labelText: 'Description',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -272,7 +275,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       prefixText: 'TZS ',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -306,7 +309,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                         prefixText: 'TZS ',
                         filled: true,
                         fillColor: isDark
-                            ? Colors.grey.shade800.withOpacity(0.5)
+                            ? Colors.grey.shade800.withValues(alpha: 0.5)
                             : Colors.grey.shade100,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -340,7 +343,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             labelText: 'Data Size',
                             filled: true,
                             fillColor: isDark
-                                ? Colors.grey.shade800.withOpacity(0.5)
+                                ? Colors.grey.shade800.withValues(alpha: 0.5)
                                 : Colors.grey.shade100,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -355,7 +358,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       Expanded(
                         flex: 2,
                         child: DropdownButtonFormField<String>(
-                          value: dataSizeUnit,
+                          initialValue: dataSizeUnit,
                           items: dataSizeUnits.map((u) =>
                               DropdownMenuItem(value: u, child: Text(u)))
                               .toList(),
@@ -364,7 +367,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             labelText: 'Unit',
                             filled: true,
                             fillColor: isDark
-                                ? Colors.grey.shade800.withOpacity(0.5)
+                                ? Colors.grey.shade800.withValues(alpha: 0.5)
                                 : Colors.grey.shade100,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -386,7 +389,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             labelText: 'Validity',
                             filled: true,
                             fillColor: isDark
-                                ? Colors.grey.shade800.withOpacity(0.5)
+                                ? Colors.grey.shade800.withValues(alpha: 0.5)
                                 : Colors.grey.shade100,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -401,7 +404,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       Expanded(
                         flex: 2,
                         child: DropdownButtonFormField<String>(
-                          value: validityUnit,
+                          initialValue: validityUnit,
                           items: validityUnits.map((u) =>
                               DropdownMenuItem(value: u, child: Text(u)))
                               .toList(),
@@ -410,7 +413,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             labelText: 'Unit',
                             filled: true,
                             fillColor: isDark
-                                ? Colors.grey.shade800.withOpacity(0.5)
+                                ? Colors.grey.shade800.withValues(alpha: 0.5)
                                 : Colors.grey.shade100,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -423,7 +426,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: selectedNetwork,
+                    initialValue: selectedNetwork,
                     items: ['Halotel', 'Tigo', 'Vodacom', 'Airtel']
                         .map((n) => DropdownMenuItem(value: n, child: Text(n)))
                         .toList(),
@@ -432,7 +435,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       labelText: 'Network *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -563,13 +566,15 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                     if (data['success'] == true) {
                       Navigator.pop(ctx);
                       _fetchPackages();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text(isEdit
-                                ? 'Package updated'
-                                : 'Package pair created'),
-                            backgroundColor: Colors.green),
-                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text(isEdit
+                                  ? 'Package updated'
+                                  : 'Package pair created'),
+                              backgroundColor: Colors.green),
+                        );
+                      }
                     } else {
                       throw ApiException(
                         statusCode: response.statusCode,
@@ -583,7 +588,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                     );
                   }
                 } catch (e) {
-                  showErrorSnackbar(ctx, e);
+                  if (mounted) showErrorSnackbar(ctx, e);
                   setStateDialog(() => isSubmitting = false);
                 }
               },
@@ -609,14 +614,16 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
         _fetchPackages();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(!current ? 'Package activated' : 'Package deactivated'),
-              backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(!current ? 'Package activated' : 'Package deactivated'),
+                backgroundColor: Colors.green),
+          );
+        }
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     }
   }
 
@@ -646,12 +653,14 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
         _fetchPackages();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Package deleted'), backgroundColor: Colors.green),
+          );
+        }
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     }
   }
 
@@ -695,8 +704,8 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
           final sellerPrice = _parsePrice(p['sellerPrice']);
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF1A1A2E).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF1A1A2E).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -805,7 +814,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       ),
     );
 
-    // ✅ If showAppBar is false, return only the body (no Scaffold)
     if (!widget.showAppBar) {
       return Scaffold(
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
@@ -813,7 +821,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       );
     }
 
-    // ✅ Otherwise, show full screen with its own app bar
     return Scaffold(
       backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
@@ -839,7 +846,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                       hintText: 'Search packages...',
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
-                      fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                      fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,
@@ -851,10 +858,10 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
-                    value: _filterType,
+                    initialValue: _filterType,
                     decoration: InputDecoration(
                       filled: true,
-                      fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                      fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,

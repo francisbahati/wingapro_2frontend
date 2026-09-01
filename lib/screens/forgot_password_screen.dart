@@ -29,9 +29,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _sendResetLink() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final response = await http
@@ -45,10 +43,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
-        setState(() {
-          _emailSent = true;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _emailSent = true;
+            _isLoading = false;
+          });
+        }
       } else {
         final info = ErrorHandler.handle(
           ApiException(
@@ -56,21 +56,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             message: data['message'] ?? 'Failed to send OTP. Please try again.',
           ),
         );
-        showErrorSnackbar(context, info);
-        setState(() => _isLoading = false);
+        if (mounted) showErrorSnackbar(context, info);
+        if (mounted) setState(() => _isLoading = false);
       }
     } on TimeoutException {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'Connection timeout. Check your internet and try again.',
-        ),
-      );
-      setState(() => _isLoading = false);
+      if (mounted) {
+        showErrorSnackbar(
+          context,
+          ApiException(
+            statusCode: null,
+            message: 'Connection timeout. Check your internet and try again.',
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     } catch (e) {
-      showErrorSnackbar(context, e);
-      setState(() => _isLoading = false);
+      if (mounted) {
+        showErrorSnackbar(context, e);
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -98,12 +102,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: Card(
                 elevation: 0,
                 color: isDark
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.white.withOpacity(0.15),
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                   side: BorderSide(
-                    color: Colors.white.withOpacity(isDark ? 0.08 : 0.2),
+                    color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -171,8 +175,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               filled: true,
               fillColor: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.white.withOpacity(0.3),
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.3),
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email required';

@@ -1,8 +1,8 @@
 // lib/screens/business_staff/business_staff_field_activities_screen.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -26,14 +26,25 @@ class _BusinessStaffFieldActivitiesScreenState
   final ApiService _api = ApiService();
   List<dynamic> _activities = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _fetchActivities();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) _fetchActivities();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchActivities() async {
@@ -53,7 +64,9 @@ class _BusinessStaffFieldActivitiesScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _activities = data['activities']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _activities = data['activities']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -68,12 +81,14 @@ class _BusinessStaffFieldActivitiesScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchActivities);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -104,24 +119,23 @@ class _BusinessStaffFieldActivitiesScreenState
     final followUpActionController = TextEditingController();
     DateTime? followUpDate;
     final notesController = TextEditingController();
-    bool _isSaving = false;
 
     final customers = await _getCustomers();
 
     showDialog(
       context: context,
-      barrierDismissible: !_isSaving,
+      barrierDismissible: !_isSubmitting,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Record Field Activity'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -150,7 +164,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Customer',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -166,7 +180,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Customer Name *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -181,7 +195,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Customer Phone *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -196,7 +210,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Location',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -211,7 +225,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Customer Type',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -227,7 +241,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Package ID (optional)',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -237,7 +251,7 @@ class _BusinessStaffFieldActivitiesScreenState
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: outcome,
+                    initialValue: outcome,
                     items: const [
                       DropdownMenuItem(value: 'bought', child: Text('Bought')),
                       DropdownMenuItem(
@@ -250,7 +264,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Outcome *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -279,7 +293,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Follow-up Action',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -316,7 +330,7 @@ class _BusinessStaffFieldActivitiesScreenState
                       labelText: 'Notes',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -330,11 +344,11 @@ class _BusinessStaffFieldActivitiesScreenState
           ),
           actions: [
             TextButton(
-              onPressed: _isSaving ? null : () => Navigator.pop(ctx),
+              onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: _isSaving
+              onPressed: _isSubmitting
                   ? null
                   : () async {
                 if (customerNameController.text.trim().isEmpty ||
@@ -360,7 +374,7 @@ class _BusinessStaffFieldActivitiesScreenState
                   );
                   return;
                 }
-                setStateDialog(() => _isSaving = true);
+                setStateDialog(() => _isSubmitting = true);
                 final body = {
                   'customerId': selectedCustomer['id'],
                   'customerName': customerNameController.text.trim(),
@@ -388,11 +402,13 @@ class _BusinessStaffFieldActivitiesScreenState
                       data['success'] == true) {
                     Navigator.pop(ctx);
                     _fetchActivities();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Activity recorded'),
-                          backgroundColor: Colors.green),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Activity recorded'),
+                            backgroundColor: Colors.green),
+                      );
+                    }
                   } else {
                     throw ApiException(
                       statusCode: response.statusCode,
@@ -400,11 +416,11 @@ class _BusinessStaffFieldActivitiesScreenState
                     );
                   }
                 } catch (e) {
-                  showErrorSnackbar(ctx, e);
-                  setStateDialog(() => _isSaving = false);
+                  if (mounted) showErrorSnackbar(ctx, e);
+                  setStateDialog(() => _isSubmitting = false);
                 }
               },
-              child: _isSaving
+              child: _isSubmitting
                   ? const SizedBox(width: 20, height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('Save'),
@@ -463,7 +479,7 @@ class _BusinessStaffFieldActivitiesScreenState
         foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddActivityDialog,
+        onPressed: _isSubmitting ? null : _showAddActivityDialog,
         backgroundColor: const Color(0xFF0A2E5C),
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -483,8 +499,8 @@ class _BusinessStaffFieldActivitiesScreenState
             final a = _activities[i];
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 title: Text(
                   a['customerName'] ?? 'Unknown',

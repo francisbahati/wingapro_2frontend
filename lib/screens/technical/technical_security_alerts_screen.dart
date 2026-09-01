@@ -1,12 +1,14 @@
 // lib/screens/technical/technical_security_alerts_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
+import '../../services/error_handler.dart';
 import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/error_view.dart';
+import '../../widgets/error_snackbar.dart';
 
 class TechnicalSecurityAlertsScreen extends StatefulWidget {
   final bool showAppBar;
@@ -23,8 +25,9 @@ class _TechnicalSecurityAlertsScreenState
   final ApiService _api = ApiService();
   List<dynamic> _alerts = [];
   bool _isLoading = true;
-  String? _error;
   bool _isProcessing = false;
+  int? _processingAlertId;
+  String? _error;
 
   @override
   void initState() {
@@ -36,7 +39,7 @@ class _TechnicalSecurityAlertsScreenState
     setState(() { _isLoading = true; _error = null; });
     try {
       final token = await _auth.getToken();
-      if (token == null) throw Exception('Not logged in');
+      if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
       final response = await _api.get(
         context,
         '${ApiConfig.baseUrl}/api/technical/security-alerts',
@@ -44,21 +47,34 @@ class _TechnicalSecurityAlertsScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _alerts = data['alerts']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _alerts = data['alerts']; _isLoading = false; });
+          }
         } else {
-          throw Exception(data['message'] ?? 'Failed to load alerts');
+          throw ApiException(
+            statusCode: response.statusCode,
+            message: data['message'] ?? 'Failed to load alerts',
+          );
         }
       } else {
-        throw Exception('Server error: ${response.statusCode}');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Server error: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted) {
+        setState(() { _error = e.toString(); _isLoading = false; });
+      }
     }
   }
 
   Future<void> _resolveAlert(int id) async {
     if (_isProcessing) return;
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _processingAlertId = id;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -67,18 +83,26 @@ class _TechnicalSecurityAlertsScreenState
       );
       if (response.statusCode == 200) {
         _fetchAlerts();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Alert resolved'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Alert resolved'), backgroundColor: Colors.green),
+          );
+        }
       } else {
-        throw Exception('Failed to resolve');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Failed to resolve',
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _processingAlertId = null;
+        });
+      }
     }
   }
 
@@ -116,10 +140,11 @@ class _TechnicalSecurityAlertsScreenState
         itemCount: _alerts.length,
         itemBuilder: (ctx, i) {
           final a = _alerts[i];
+          final isResolving = _isProcessing && _processingAlertId == a['id'];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: a['severity'] == 'high'
@@ -153,7 +178,7 @@ class _TechnicalSecurityAlertsScreenState
                   ),
                   if (a['status'] != 'resolved')
                     IconButton(
-                      icon: _isProcessing
+                      icon: isResolving
                           ? const SizedBox(
                         width: 20,
                         height: 20,
@@ -162,7 +187,7 @@ class _TechnicalSecurityAlertsScreenState
                       )
                           : const Icon(Icons.check,
                           color: Colors.green),
-                      onPressed: _isProcessing
+                      onPressed: isResolving
                           ? null
                           : () => _resolveAlert(a['id']),
                     ),

@@ -268,6 +268,7 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
       ],
     );
 
+    // ✅ If showAppBar is false, return body without extra top padding
     if (!widget.showAppBar) {
       return Scaffold(
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
@@ -275,6 +276,7 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
       );
     }
 
+    // ✅ Otherwise, show full screen with its own app bar
     return Scaffold(
       backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(

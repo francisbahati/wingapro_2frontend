@@ -13,7 +13,14 @@ class MoreItem {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  MoreItem({required this.label, required this.icon, required this.onTap});
+  final int? badge;
+
+  MoreItem({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.badge,
+  });
 }
 
 class RoleNavigation extends StatefulWidget {
@@ -89,11 +96,39 @@ class _RoleNavigationState extends State<RoleNavigation> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                // ✅ Wrap each ListTile in a Material widget with transparent color
                 ...widget.moreItems.map((item) => Material(
                   color: Colors.transparent,
                   child: ListTile(
-                    leading: Icon(item.icon, color: Theme.of(context).primaryColor),
+                    leading: Stack(
+                      children: [
+                        Icon(item.icon, color: Theme.of(context).primaryColor),
+                        if (item.badge != null && item.badge! > 0)
+                          Positioned(
+                            right: -6,
+                            top: -6,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Text(
+                                item.badge! > 9 ? '9+' : '${item.badge}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     title: Text(
                       item.label,
                       style: TextStyle(

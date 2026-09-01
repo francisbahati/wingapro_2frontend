@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -23,6 +22,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _tickets = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -51,10 +51,12 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           final all = data['tickets'] ?? [];
-          setState(() {
-            _tickets = all.take(50).toList();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _tickets = all.take(50).toList();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -69,12 +71,14 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchTickets);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -82,6 +86,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
     final bool? confirm = await _showDeleteConfirmationDialog();
     if (confirm != true) return;
 
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
@@ -90,10 +95,12 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
         '${ApiConfig.baseUrl}/api/tickets/$id',
       );
       if (response.statusCode == 200) {
-        setState(() {
-          _tickets.removeWhere((t) => t['id'] == id);
-        });
-        _showSuccessSnackbar('Ticket deleted successfully');
+        if (mounted) {
+          setState(() {
+            _tickets.removeWhere((t) => t['id'] == id);
+          });
+          _showSuccessSnackbar('Ticket deleted successfully');
+        }
       } else {
         final data = jsonDecode(response.body);
         throw ApiException(
@@ -102,7 +109,9 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -113,7 +122,9 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Ticket?'),
         content: const Text('This action cannot be undone. Are you sure?'),
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
@@ -140,6 +151,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
   }
 
   void _showSuccessSnackbar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -152,6 +164,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
 
   Future<void> _createTicket(String subject, String message,
       {bool isDispute = false}) async {
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
@@ -171,7 +184,9 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -182,9 +197,12 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: !_isSubmitting,
       builder: (ctx) => AlertDialog(
         title: Text(isDispute ? 'File a Dispute' : 'New Support Ticket'),
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
@@ -200,7 +218,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
               decoration: InputDecoration(
                 labelText: 'Subject *',
                 filled: true,
-                fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -214,7 +232,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
               decoration: InputDecoration(
                 labelText: 'Message *',
                 filled: true,
-                fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -225,11 +243,13 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: _isSubmitting
+                ? null
+                : () {
               final subject = subjectController.text.trim();
               final message = messageController.text.trim();
               if (subject.isEmpty || message.isEmpty) {
@@ -248,7 +268,13 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
               backgroundColor: const Color(0xFF0A2E5C),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Send'),
+            child: _isSubmitting
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Text('Send'),
           ),
         ],
       ),
@@ -306,9 +332,16 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _showNewTicketDialog(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('New Ticket'),
+                      onPressed: _isSubmitting ? null : () => _showNewTicketDialog(),
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                          : const Icon(Icons.add),
+                      label: _isSubmitting ? const Text('Sending...') : const Text('New Ticket'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0A2E5C),
                         foregroundColor: Colors.white,
@@ -321,9 +354,16 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _showNewTicketDialog(isDispute: true),
-                      icon: const Icon(Icons.warning),
-                      label: const Text('Dispute'),
+                      onPressed: _isSubmitting ? null : () => _showNewTicketDialog(isDispute: true),
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                          : const Icon(Icons.warning),
+                      label: _isSubmitting ? const Text('Sending...') : const Text('Dispute'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -347,6 +387,7 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
                   final isOpen = t['status'] == 'open';
                   final subject = _truncate(t['subject'] ?? '', maxLength: 40);
                   final message = _truncate(t['message'] ?? '', maxLength: 60);
+                  final isDeleting = _isSubmitting;
 
                   return Dismissible(
                     key: Key(t['id'].toString()),
@@ -431,8 +472,15 @@ class _BuyerSupportScreenState extends State<BuyerSupportScreen> {
                                   ),
                                 if (isOpen)
                                   IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                    onPressed: () => _deleteTicket(t['id']),
+                                    icon: isDeleting
+                                        ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.red),
+                                    )
+                                        : const Icon(Icons.delete, color: Colors.red, size: 20),
+                                    onPressed: isDeleting ? null : () => _deleteTicket(t['id']),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),

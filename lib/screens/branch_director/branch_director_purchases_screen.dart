@@ -1,7 +1,6 @@
 // lib/screens/branch_director/branch_director_purchases_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,6 +24,7 @@ class _BranchDirectorPurchasesScreenState
   final ApiService _api = ApiService();
   List<dynamic> _purchases = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   bool _noBranch = false;
   String? _errorTitle;
   String? _errorMessage;
@@ -37,6 +37,7 @@ class _BranchDirectorPurchasesScreenState
   }
 
   Future<void> _fetchPurchases() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -54,7 +55,9 @@ class _BranchDirectorPurchasesScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _purchases = data['purchases']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _purchases = data['purchases']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -62,7 +65,9 @@ class _BranchDirectorPurchasesScreenState
           );
         }
       } else if (response.statusCode == 400) {
-        setState(() { _noBranch = true; _isLoading = false; });
+        if (mounted) {
+          setState(() { _noBranch = true; _isLoading = false; });
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -71,13 +76,22 @@ class _BranchDirectorPurchasesScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPurchases);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchPurchases();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   @override
@@ -98,7 +112,7 @@ class _BranchDirectorPurchasesScreenState
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _fetchPurchases,
+              onPressed: _refreshData,
               child: const Text('Retry'),
             ),
           ],
@@ -122,7 +136,7 @@ class _BranchDirectorPurchasesScreenState
         ? const Center(
         child: Text('No purchases from customers in your branch.'))
         : RefreshIndicator(
-      onRefresh: _fetchPurchases,
+      onRefresh: _refreshData,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _purchases.length,
@@ -130,8 +144,8 @@ class _BranchDirectorPurchasesScreenState
           final p = _purchases[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 child: Text(

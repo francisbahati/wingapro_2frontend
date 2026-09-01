@@ -1,7 +1,6 @@
 // lib/screens/showroom/showroom_complaints_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,10 +24,11 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _tickets = [];
   bool _isLoading = true;
+  bool _isUpdating = false;
+  int? _updatingTicketId;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isUpdating = false;
 
   @override
   void initState() {
@@ -53,7 +53,9 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _tickets = data['complaints'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _tickets = data['complaints'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -68,18 +70,23 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchTickets);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _updateTicket(int id, String status, String reply) async {
     if (_isUpdating) return;
-    setState(() => _isUpdating = true);
+    setState(() {
+      _isUpdating = true;
+      _updatingTicketId = id;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -89,9 +96,11 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchTickets();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Complaint updated'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Complaint updated'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -99,9 +108,14 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      if (mounted) setState(() => _isUpdating = false);
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+          _updatingTicketId = null;
+        });
+      }
     }
   }
 
@@ -117,13 +131,13 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('Complaint #${ticket['id']}'),
         backgroundColor: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -152,7 +166,7 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: selectedStatus,
+                  initialValue: selectedStatus,
                   items: ['open', 'in_progress', 'closed']
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
@@ -161,7 +175,7 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
                     labelText: 'Status',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -177,7 +191,7 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
                     labelText: 'Admin Reply',
                     filled: true,
                     fillColor: isDark
-                        ? Colors.grey.shade800.withOpacity(0.5)
+                        ? Colors.grey.shade800.withValues(alpha: 0.5)
                         : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -191,14 +205,23 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              onPressed: _isUpdating ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: _isUpdating
+                ? null
+                : () {
               Navigator.pop(ctx);
               _updateTicket(ticket['id'], selectedStatus,
                   replyController.text.trim());
             },
-            child: const Text('Update'),
+            child: (_isUpdating && _updatingTicketId == ticket['id'])
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Text('Update'),
           ),
         ],
       ),
@@ -230,10 +253,11 @@ class _ShowroomComplaintsScreenState extends State<ShowroomComplaintsScreen> {
         itemCount: _tickets.length,
         itemBuilder: (ctx, i) {
           final t = _tickets[i];
+          final isUpdatingThis = _isUpdating && _updatingTicketId == t['id'];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               title: Text(
                 t['subject'],

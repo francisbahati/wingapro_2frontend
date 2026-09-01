@@ -82,9 +82,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open link.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link.')),
+        );
+      }
     }
   }
 
@@ -101,7 +103,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiConfig.headers,
         body: jsonEncode({
           'username': _usernameController.text.trim(),
           'email': _emailController.text.trim(),
@@ -129,23 +131,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
           );
         }
       } else {
-        showErrorSnackbar(
-          context,
-          ApiException(
-            statusCode: response.statusCode,
-            message: data['message'] ?? data['error'] ?? 'Registration failed',
-          ),
-        );
+        if (mounted) {
+          showErrorSnackbar(
+            context,
+            ApiException(
+              statusCode: response.statusCode,
+              message: data['message'] ?? data['error'] ?? 'Registration failed',
+            ),
+          );
+        }
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'User already exists, if not check your Account details',
-        ),
-      );
+      if (mounted) {
+        showErrorSnackbar(
+          context,
+          ApiException(
+            statusCode: null,
+            message: 'User already exists, if not check your Account details',
+          ),
+        );
+      }
       setState(() => _isLoading = false);
     }
   }
@@ -174,12 +180,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Card(
                 elevation: 0,
                 color: isDark
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.white.withOpacity(0.15),
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                   side: BorderSide(
-                    color: Colors.white.withOpacity(isDark ? 0.08 : 0.2),
+                    color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -242,8 +248,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) =>
                               v!.trim().isEmpty ? 'Username required' : null,
@@ -261,8 +267,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) =>
                               v!.trim().isEmpty ? 'Email required' : null,
@@ -280,8 +286,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty) {
@@ -313,8 +319,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                                 helperText:
                                 'Min 8 chars, at least one letter and one number',
                                 helperStyle: TextStyle(
@@ -356,8 +362,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (v) =>
                               v != _passwordController.text.trim()

@@ -1,7 +1,6 @@
 // lib/screens/buyer/order_detail_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -45,15 +44,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OrderConfirmationScreen(
-              purchaseId: widget.order['id'],
-              packageName: widget.order['Package']?['name'] ?? 'Package',
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderConfirmationScreen(
+                purchaseId: widget.order['id'],
+                packageName: widget.order['Package']?['name'] ?? 'Package',
+              ),
             ),
-          ),
-        );
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -61,9 +62,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      setState(() => _isSubmitting = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -82,6 +83,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final createdAt = order['createdAt'] ?? DateTime.now().toIso8601String();
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Order Details'),
         backgroundColor: const Color(0xFF0A2E5C),
@@ -101,15 +103,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            _buildInfoRow('Package', packageName),
-            _buildInfoRow('Recipient', recipientName),
-            _buildInfoRow('Phone', recipientPhone),
-            _buildInfoRow('Network', network),
-            _buildInfoRow('Amount', 'TZS $amount'),
+            _buildInfoRow('Package', packageName, isDark),
+            _buildInfoRow('Recipient', recipientName, isDark),
+            _buildInfoRow('Phone', recipientPhone, isDark),
+            _buildInfoRow('Network', network, isDark),
+            _buildInfoRow('Amount', 'TZS $amount', isDark),
             if (assignedSeller != null)
-              _buildInfoRow('Seller', assignedSeller['username']),
-            _buildInfoRow('Status', _getStatusText(status)),
-            _buildInfoRow('Date', createdAt.substring(0, 10)),
+              _buildInfoRow('Seller', assignedSeller['username'], isDark),
+            _buildInfoRow('Status', _getStatusText(status), isDark),
+            _buildInfoRow('Date', createdAt.substring(0, 10), isDark),
             const Divider(),
             if (canConfirm) ...[
               const Text(
@@ -160,8 +162,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildInfoRow(String label, String value, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(

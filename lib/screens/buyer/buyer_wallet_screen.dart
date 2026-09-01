@@ -2,12 +2,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
 import '../../services/error_handler.dart';
 import '../../widgets/error_view.dart';
+import '../../models/withdrawal_model.dart';
 import '../payment/payment_deposit_withdraw_screen.dart';
 
 class BuyerWalletScreen extends StatefulWidget {
@@ -22,7 +22,10 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
   final ApiService _api = ApiService();
   double _balance = 0.0;
   List<dynamic> _transactions = [];
+  List<WithdrawalRequest> _withdrawals = [];
   bool _isLoading = true;
+  bool _isLoadingWithdrawals = false;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -31,9 +34,11 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
   void initState() {
     super.initState();
     _fetchWalletData();
+    _fetchWithdrawalHistory();
   }
 
   Future<void> _fetchWalletData() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -50,11 +55,13 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _balance = (data['balance'] ?? 0.0).toDouble();
-            _transactions = data['transactions'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _balance = (data['balance'] ?? 0.0).toDouble();
+              _transactions = data['transactions'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -69,13 +76,50 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchWalletData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _fetchWithdrawalHistory() async {
+    setState(() => _isLoadingWithdrawals = true);
+    try {
+      final token = await _auth.getToken();
+      if (token == null) return;
+      final response = await _api.getWithdrawalHistory(context, limit: 10);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          final list = data['withdrawals'] as List? ?? [];
+          if (mounted) {
+            setState(() {
+              _withdrawals = list.map((json) => WithdrawalRequest.fromJson(json)).toList();
+              _isLoadingWithdrawals = false;
+            });
+          }
+        } else {
+          if (mounted) setState(() => _isLoadingWithdrawals = false);
+        }
+      } else {
+        if (mounted) setState(() => _isLoadingWithdrawals = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingWithdrawals = false);
+    }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchWalletData();
+    await _fetchWithdrawalHistory();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   String _formatAmount(double amount) {
@@ -120,7 +164,7 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-        onRefresh: _fetchWalletData,
+        onRefresh: _refreshData,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -160,7 +204,9 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () async {
+                        onPressed: _isRefreshing
+                            ? null
+                            : () async {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -170,10 +216,20 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
                               ),
                             ),
                           );
-                          _fetchWalletData();
+                          await _refreshData();
                         },
-                        icon: const Icon(Icons.payment),
-                        label: const Text('Deposit / Withdraw'),
+                        icon: _isRefreshing
+                            ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF0A2E5C)),
+                        )
+                            : const Icon(Icons.payment),
+                        label: _isRefreshing
+                            ? const Text('Loading...')
+                            : const Text('Deposit / Withdraw'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: const Color(0xFF0A2E5C),
@@ -190,6 +246,64 @@ class _BuyerWalletScreenState extends State<BuyerWalletScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // Withdrawal History Section
+            Text(
+              'Withdrawal History',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_isLoadingWithdrawals)
+              const Center(child: CircularProgressIndicator())
+            else if (_withdrawals.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('No withdrawal requests yet.'),
+                ),
+              )
+            else
+              ..._withdrawals.map((w) => Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: w.status.color,
+                    child: Icon(
+                      w.status == WithdrawalStatus.completed
+                          ? Icons.check
+                          : w.status == WithdrawalStatus.rejected
+                          ? Icons.close
+                          : Icons.hourglass_empty,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  title: Text('TZS ${w.amount.toStringAsFixed(0)}'),
+                  subtitle: Text(
+                    '${w.status.displayName} • ${DateFormat('dd/MM/yy').format(w.requestedAt)}',
+                  ),
+                  trailing: Text(
+                    w.status == WithdrawalStatus.completed
+                        ? '✅ Sent'
+                        : w.status == WithdrawalStatus.rejected
+                        ? '❌ Rejected'
+                        : '⏳ Pending',
+                    style: TextStyle(
+                      color: w.status.color,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              )),
+            const Divider(),
+            const SizedBox(height: 8),
+
+            // Recent Transactions
             const Text(
               'Recent Transactions',
               style: TextStyle(

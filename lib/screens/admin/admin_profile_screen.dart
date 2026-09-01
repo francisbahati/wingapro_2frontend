@@ -1,7 +1,6 @@
 // lib/screens/admin/admin_profile_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,10 +24,10 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
   final ApiService _api = ApiService();
   Map<String, dynamic>? _user;
   bool _isLoading = true;
+  bool _isLoggingOut = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isLoggingOut = false;
 
   @override
   void initState() {
@@ -53,7 +52,9 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _user = data['user']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _user = data['user']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -68,12 +69,14 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchProfile);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -82,7 +85,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     setState(() => _isLoggingOut = true);
     await _auth.logout();
     NotificationService().stopPolling();
-    if (context.mounted) {
+    if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -92,6 +95,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = _user;
     final username = user?['username'] ?? 'Administrator';
     final email = user?['email'] ?? '';
@@ -99,6 +103,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
     if (_errorTitle != null) {
       return Scaffold(
+        backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         appBar: AppBar(
           title: const Text('Admin Profile'),
           backgroundColor: Colors.transparent,
@@ -113,6 +118,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     }
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Admin Profile'),
         backgroundColor: Colors.transparent,
@@ -128,6 +134,9 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
               child: Column(
                 children: [
                   GlassCard(
+                    backgroundColor: isDark
+                        ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.95),
                     child: Column(
                       children: [
                         const CircleAvatar(
@@ -139,23 +148,27 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                         const SizedBox(height: 20),
                         Text(
                           username,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 24,
-                              fontWeight: FontWeight.bold),
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87),
                         ),
                         const SizedBox(height: 8),
                         Text(email,
-                            style: const TextStyle(color: Colors.grey)),
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                         const SizedBox(height: 4),
                         Text(phone,
-                            style: const TextStyle(color: Colors.grey)),
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                         const SizedBox(height: 20),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0A2E5C).withOpacity(
-                                0.1),
+                            color: const Color(0xFF0A2E5C).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text('Administrator',
@@ -167,6 +180,9 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                   ),
                   const SizedBox(height: 16),
                   GlassCard(
+                    backgroundColor: isDark
+                        ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.95),
                     child: ListTile(
                       leading: const Icon(Icons.settings),
                       title: const Text('Settings'),

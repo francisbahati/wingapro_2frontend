@@ -1,7 +1,6 @@
 // lib/screens/finance/finance_transactions_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,6 +24,7 @@ class _FinanceTransactionsScreenState
   final ApiService _api = ApiService();
   List<dynamic> _transactions = [];
   bool _isLoading = true;
+  bool _isFiltering = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -32,10 +32,11 @@ class _FinanceTransactionsScreenState
   String _filterNetwork = '';
   DateTime? _startDate;
   DateTime? _endDate;
-  bool _isSearching = false;
+  String _paymentMethod = 'all';
 
   final List<String> _networks = ['', 'Halotel', 'Tigo', 'Vodacom', 'Airtel'];
   final List<String> _statuses = ['', 'pending', 'completed', 'failed'];
+  final List<String> _paymentMethods = ['all', 'wallet', 'cash'];
 
   @override
   void initState() {
@@ -57,6 +58,7 @@ class _FinanceTransactionsScreenState
       final query = [];
       if (_filterStatus.isNotEmpty) query.add('status=$_filterStatus');
       if (_filterNetwork.isNotEmpty) query.add('network=$_filterNetwork');
+      if (_paymentMethod != 'all') query.add('paymentMethod=$_paymentMethod');
       if (_startDate != null) {
         query.add(
             'startDate=${_startDate!.toIso8601String().split('T').first}');
@@ -69,10 +71,12 @@ class _FinanceTransactionsScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _transactions = data['transactions'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _transactions = data['transactions'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -87,12 +91,14 @@ class _FinanceTransactionsScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchTransactions);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -104,12 +110,10 @@ class _FinanceTransactionsScreenState
       lastDate: DateTime.now(),
     );
     if (picked != null) {
-      setState(() {
-        _startDate = picked;
-        _isSearching = true;
-      });
-      _fetchTransactions();
-      setState(() => _isSearching = false);
+      setState(() => _isFiltering = true);
+      setState(() => _startDate = picked);
+      await _fetchTransactions();
+      if (mounted) setState(() => _isFiltering = false);
     }
   }
 
@@ -121,12 +125,10 @@ class _FinanceTransactionsScreenState
       lastDate: DateTime.now(),
     );
     if (picked != null) {
-      setState(() {
-        _endDate = picked;
-        _isSearching = true;
-      });
-      _fetchTransactions();
-      setState(() => _isSearching = false);
+      setState(() => _isFiltering = true);
+      setState(() => _endDate = picked);
+      await _fetchTransactions();
+      if (mounted) setState(() => _isFiltering = false);
     }
   }
 
@@ -134,12 +136,13 @@ class _FinanceTransactionsScreenState
     setState(() {
       _filterStatus = '';
       _filterNetwork = '';
+      _paymentMethod = 'all';
       _startDate = null;
       _endDate = null;
-      _isSearching = true;
+      _isFiltering = true;
     });
     _fetchTransactions();
-    setState(() => _isSearching = false);
+    if (mounted) setState(() => _isFiltering = false);
   }
 
   @override
@@ -150,14 +153,14 @@ class _FinanceTransactionsScreenState
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          color: isDark ? Colors.grey.shade800.withOpacity(0.3) : Colors.grey.shade50,
+          color: isDark ? Colors.grey.shade800.withValues(alpha: 0.3) : Colors.grey.shade50,
           child: Column(
             children: [
               Row(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _filterStatus.isEmpty ? null : _filterStatus,
+                      initialValue: _filterStatus.isEmpty ? null : _filterStatus,
                       hint: const Text('Status'),
                       items: _statuses.map((s) => DropdownMenuItem(
                         value: s.isEmpty ? null : s,
@@ -170,7 +173,7 @@ class _FinanceTransactionsScreenState
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: isDark
-                            ? Colors.grey.shade800.withOpacity(0.5)
+                            ? Colors.grey.shade800.withValues(alpha: 0.5)
                             : Colors.grey.shade100,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -182,7 +185,7 @@ class _FinanceTransactionsScreenState
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _filterNetwork.isEmpty ? null : _filterNetwork,
+                      initialValue: _filterNetwork.isEmpty ? null : _filterNetwork,
                       hint: const Text('Network'),
                       items: _networks.map((n) => DropdownMenuItem(
                         value: n.isEmpty ? null : n,
@@ -195,7 +198,7 @@ class _FinanceTransactionsScreenState
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: isDark
-                            ? Colors.grey.shade800.withOpacity(0.5)
+                            ? Colors.grey.shade800.withValues(alpha: 0.5)
                             : Colors.grey.shade100,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -210,6 +213,31 @@ class _FinanceTransactionsScreenState
               Row(
                 children: [
                   Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _paymentMethod,
+                      hint: const Text('Payment Method'),
+                      items: _paymentMethods.map((m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(m.toUpperCase()),
+                      )).toList(),
+                      onChanged: (v) {
+                        setState(() { _paymentMethod = v ?? 'all'; });
+                        _fetchTransactions();
+                      },
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: isDark
+                            ? Colors.grey.shade800.withValues(alpha: 0.5)
+                            : Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: GestureDetector(
                       onTap: () => _selectStartDate(context),
                       child: Container(
@@ -217,7 +245,7 @@ class _FinanceTransactionsScreenState
                             horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.grey.shade800.withOpacity(0.5)
+                              ? Colors.grey.shade800.withValues(alpha: 0.5)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -250,7 +278,7 @@ class _FinanceTransactionsScreenState
                             horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.grey.shade800.withOpacity(0.5)
+                              ? Colors.grey.shade800.withValues(alpha: 0.5)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -275,8 +303,14 @@ class _FinanceTransactionsScreenState
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: _clearFilters,
+                    icon: _isFiltering
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                        : const Icon(Icons.clear),
+                    onPressed: _isFiltering ? null : _clearFilters,
                     tooltip: 'Clear filters',
                     color: isDark ? Colors.white70 : Colors.grey,
                   ),
@@ -309,8 +343,8 @@ class _FinanceTransactionsScreenState
                 final t = _transactions[i];
                 return GlassCard(
                   backgroundColor: isDark
-                      ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                      : Colors.white.withOpacity(0.85),
+                      ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                      : Colors.white.withValues(alpha: 0.85),
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundColor: t['status'] == 'completed'
@@ -332,6 +366,8 @@ class _FinanceTransactionsScreenState
                             'Recipient: ${t['recipientName']} (${t['recipientPhone']})'),
                         Text('Network: ${t['network']}'),
                         Text('Escrow: ${t['escrowStatus'] ?? 'N/A'}'),
+                        if (t['paymentMethod'] != null)
+                          Text('Payment: ${t['paymentMethod']}'),
                       ],
                     ),
                     trailing: Column(

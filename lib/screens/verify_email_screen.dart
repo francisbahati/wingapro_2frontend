@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/api_config.dart';
-import '../services/auth_service.dart';
+import '../services/error_handler.dart';
+import '../widgets/error_snackbar.dart';
 import 'login_screen.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
@@ -61,7 +62,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         setState(() => _error = data['message'] ?? 'Verification failed');
       }
     } catch (e) {
-      setState(() => _error = 'Network error: $e');
+      if (mounted) {
+        showErrorSnackbar(context, e);
+        setState(() => _error = 'Network error: $e');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -80,16 +84,21 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('New OTP sent to your email.'),
-              backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('New OTP sent to your email.'),
+                backgroundColor: Colors.green),
+          );
+        }
       } else {
         setState(() => _error = data['message'] ?? 'Failed to resend OTP');
       }
     } catch (e) {
-      setState(() => _error = 'Network error: $e');
+      if (mounted) {
+        showErrorSnackbar(context, e);
+        setState(() => _error = 'Network error: $e');
+      }
     } finally {
       if (mounted) setState(() => _isResending = false);
     }
@@ -97,7 +106,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Verify Email'),
         backgroundColor: const Color(0xFF0A2E5C),
@@ -105,12 +117,16 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         automaticallyImplyLeading: false,
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF0A2E5C), Color(0xFF1E88E5)],
-          ),
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0A0E1A), Color(0xFF141B2D), Color(0xFF1A2540)])
+              : const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0A2E5C), Color(0xFF1E88E5)]),
         ),
         child: SafeArea(
           child: Center(
@@ -120,6 +136,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                 elevation: 8,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(28)),
+                color: isDark
+                    ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                    : Colors.white.withValues(alpha: 0.95),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
@@ -130,15 +149,18 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                       const SizedBox(height: 16),
                       Text(
                         'Verify Your Email',
-                        style: const TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'We sent a 6-digit OTP to ${widget.email}',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[600]),
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.grey.shade600,
+                        ),
                       ),
                       const SizedBox(height: 24),
                       TextField(
@@ -152,7 +174,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           filled: true,
-                          fillColor: Colors.grey.shade50,
+                          fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade50,
                           counterText: '',
                         ),
                       ),
@@ -211,5 +233,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    super.dispose();
   }
 }

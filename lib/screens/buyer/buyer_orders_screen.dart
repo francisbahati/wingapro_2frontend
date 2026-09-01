@@ -1,7 +1,6 @@
 // lib/screens/buyer/buyer_orders_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -23,6 +22,7 @@ class _BuyerOrdersScreenState extends State<BuyerOrdersScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _orders = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -34,6 +34,7 @@ class _BuyerOrdersScreenState extends State<BuyerOrdersScreen> {
   }
 
   Future<void> _fetchOrders() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -50,7 +51,9 @@ class _BuyerOrdersScreenState extends State<BuyerOrdersScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _orders = data['purchases'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _orders = data['purchases'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -65,12 +68,14 @@ class _BuyerOrdersScreenState extends State<BuyerOrdersScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchOrders);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 

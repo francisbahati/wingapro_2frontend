@@ -1,7 +1,6 @@
 // lib/screens/seller/seller_dashboard_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -11,7 +10,6 @@ import '../../widgets/skeleton_loading.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/notification_icon.dart';
 import '../settings_screen.dart';
-import '../notification_screen.dart';
 import 'seller_packages_screen.dart';
 import 'seller_orders_screen.dart';
 import 'seller_wallet_screen.dart';
@@ -30,6 +28,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -51,6 +50,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   }
 
   Future<void> _fetchData() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -68,11 +68,13 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _userData = data['user'];
-            _stats = data['stats'];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _userData = data['user'];
+              _stats = data['stats'];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -87,12 +89,14 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -178,16 +182,16 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.85)
-            : Colors.white.withOpacity(0.85),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+            : Colors.white.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+          color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -240,11 +244,11 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -257,7 +261,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.3) : Colors.grey.shade400,
+                  color: isDark ? Colors.white.withValues(alpha: 0.3) : Colors.grey.shade400,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -288,18 +292,17 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     );
   }
 
-  // ─── Bottom Navigation ───
   Widget _buildBottomNav() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
             width: 1,
           ),
         ),
@@ -410,11 +413,11 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
               ),
               decoration: BoxDecoration(
                 color: isDark
-                    ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                    : Colors.white.withOpacity(0.95),
+                    ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                    : Colors.white.withValues(alpha: 0.95),
                 border: Border(
                   bottom: BorderSide(
-                    color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
                     width: 1,
                   ),
                 ),
@@ -462,11 +465,11 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
             ),
             decoration: BoxDecoration(
               color: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+                  color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
                   width: 1,
                 ),
               ),

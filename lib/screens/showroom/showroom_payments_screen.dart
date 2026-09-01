@@ -1,13 +1,13 @@
 // lib/screens/showroom/showroom_payments_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
 import '../../services/error_handler.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/error_snackbar.dart';
+import '../../widgets/glass_card.dart'; // ✅ Added missing import
 
 class ShowroomPaymentsScreen extends StatefulWidget {
   const ShowroomPaymentsScreen({super.key});
@@ -21,6 +21,8 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _purchases = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _isConfirming = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -32,6 +34,7 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
   }
 
   Future<void> _fetchPurchases() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -48,7 +51,9 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _purchases = data['sales'] ?? []; _isLoading = false; });
+          if (mounted) {
+            setState(() { _purchases = data['sales'] ?? []; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -63,16 +68,26 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPurchases);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchPurchases();
+    if (mounted) setState(() => _isRefreshing = false);
+  }
+
   Future<void> _confirmPayment(int purchaseId) async {
+    setState(() => _isConfirming = true);
     try {
       final token = await _auth.getToken();
       final response = await _api.put(
@@ -82,9 +97,11 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchPurchases();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment confirmed'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Payment confirmed'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -92,15 +109,26 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isConfirming = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (_errorTitle != null) {
       return Scaffold(
-        appBar: null,
+        backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+        appBar: AppBar(
+          title: const Text('Payments'),
+          centerTitle: true,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
+        ),
         body: ErrorView(
           title: _errorTitle!,
           message: _errorMessage!,
@@ -110,24 +138,37 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
     }
 
     return Scaffold(
-      appBar: null,
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text('Payments'),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _purchases.isEmpty
           ? const Center(child: Text('No purchases to manage.'))
           : RefreshIndicator(
-        onRefresh: _fetchPurchases,
+        onRefresh: _refreshData,
         child: ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: _purchases.length,
           itemBuilder: (ctx, i) {
             final p = _purchases[i];
             final isPending = p['status'] == 'pending';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+            final isConfirming = _isConfirming;
+            return GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 title: Text(
-                    'Order #${p['id']} - ${p['User']?['username']}'),
+                    'Order #${p['id']} - ${p['User']?['username']}',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                    )),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -142,16 +183,26 @@ class _ShowroomPaymentsScreenState extends State<ShowroomPaymentsScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text('TZS ${p['amount']}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87)),
                     if (isPending)
                       ElevatedButton(
-                        onPressed: () =>
-                            _confirmPayment(p['id']),
+                        onPressed: isConfirming
+                            ? null
+                            : () => _confirmPayment(p['id']),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                         ),
-                        child: const Text('Confirm Payment'),
+                        child: isConfirming
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white),
+                        )
+                            : const Text('Confirm Payment'),
                       ),
                   ],
                 ),

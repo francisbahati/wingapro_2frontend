@@ -1,7 +1,6 @@
 // lib/screens/technical/technical_dashboard_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -15,7 +14,7 @@ import '../notification_screen.dart';
 import 'technical_tickets_screen.dart';
 import 'technical_staff_screen.dart';
 import 'technical_error_logs_screen.dart';
-import 'technical_account_recovery_screen.dart';
+// import 'technical_account_recovery_screen.dart'; // ❌ REMOVED
 import 'technical_payment_integrations_screen.dart';
 import 'technical_security_alerts_screen.dart';
 import 'technical_suspicious_transactions_screen.dart';
@@ -35,6 +34,7 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -55,6 +55,7 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
   }
 
   Future<void> _fetchData() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -72,18 +73,20 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() => _user = data['user']);
+          if (mounted) setState(() => _user = data['user']);
         }
       }
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -114,7 +117,7 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 childAspectRatio: 1.2,
-                children: List.generate(10, (_) => const SkeletonStatCard()),
+                children: List.generate(9, (_) => const SkeletonStatCard()),
               ),
             ],
           ),
@@ -154,10 +157,7 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
                         () => _navigateTo(2)),
                 _buildActionCard('Error Logs', Icons.bug_report, Colors.red,
                         () => _navigateTo(3)),
-                _buildActionCard('Recovery', Icons.lock_reset, Colors.orange,
-                        () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) =>
-                        const TechnicalAccountRecoveryScreen()))),
+                // ❌ Account Recovery card removed
                 _buildActionCard('Payments', Icons.payment, Colors.purple,
                         () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) =>
@@ -203,17 +203,17 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
       child: Container(
         decoration: BoxDecoration(
           color: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.85)
-              : Colors.white.withOpacity(0.85),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+              : Colors.white.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -247,8 +247,6 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final moreItems = [
-      {'label': 'Recovery', 'icon': Icons.lock_reset,
-        'screen': const TechnicalAccountRecoveryScreen()},
       {'label': 'Payments', 'icon': Icons.payment,
         'screen': const TechnicalPaymentIntegrationsScreen()},
       {'label': 'Security', 'icon': Icons.security,
@@ -273,12 +271,12 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -291,7 +289,7 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.3)
+                  color: isDark ? Colors.white.withValues(alpha: 0.3)
                       : Colors.grey.shade400,
                   borderRadius: BorderRadius.circular(2),
                 ),
@@ -331,11 +329,11 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
             width: 1,
           ),
         ),
@@ -445,11 +443,11 @@ class _TechnicalDashboardScreenState extends State<TechnicalDashboardScreen> {
       ),
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.1)
+            color: isDark ? Colors.white.withValues(alpha: 0.1)
                 : Colors.grey.shade200,
             width: 1,
           ),

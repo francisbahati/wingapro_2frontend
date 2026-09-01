@@ -1,7 +1,6 @@
 // lib/screens/buyer/payment_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -60,15 +59,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OrderConfirmationScreen(
-              purchaseId: data['purchase']['id'],
-              packageName: widget.package['name'],
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderConfirmationScreen(
+                purchaseId: data['purchase']['id'],
+                packageName: widget.package['name'],
+              ),
             ),
-          ),
-        );
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -76,18 +77,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
-      setState(() => _isProcessing = false);
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final price = _parsePrice(widget.package['price'] ??
         widget.package['displayPrice']);
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Confirm Payment'),
         backgroundColor: const Color(0xFF0A2E5C),
@@ -102,6 +105,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               elevation: 4,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
+              color: isDark ? Colors.grey.shade800.withValues(alpha: 0.6) : Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -109,8 +113,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   children: [
                     Text(
                       widget.package['name'] ?? 'Package',
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -118,16 +123,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         const Icon(Icons.network_cell, size: 16,
                             color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(widget.selectedNetwork),
+                        Text(widget.selectedNetwork,
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                         const SizedBox(width: 16),
                         const Icon(Icons.data_usage, size: 16,
                             color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(widget.package['dataSize'] ?? ''),
+                        Text(widget.package['dataSize'] ?? '',
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                         const SizedBox(width: 16),
                         const Icon(Icons.timer, size: 16, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(widget.package['validity'] ?? ''),
+                        Text(widget.package['validity'] ?? '',
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                       ],
                     ),
                     const Divider(),
@@ -153,6 +167,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               elevation: 2,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
+              color: isDark ? Colors.grey.shade800.withValues(alpha: 0.6) : Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -169,7 +184,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         const Icon(Icons.person, size: 16,
                             color: Colors.grey),
                         const SizedBox(width: 8),
-                        Text(widget.recipientName),
+                        Text(widget.recipientName,
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -177,7 +195,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       children: [
                         const Icon(Icons.phone, size: 16, color: Colors.grey),
                         const SizedBox(width: 8),
-                        Text(widget.recipientPhone),
+                        Text(widget.recipientPhone,
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            )),
                       ],
                     ),
                   ],
@@ -188,9 +209,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: isDark ? Colors.blue.shade700 : Colors.blue.shade200),
               ),
               child: Row(
                 children: [
@@ -225,7 +246,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 8),
             Text(
               'Your wallet will be debited TZS ${price.toStringAsFixed(0)}',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(
+                color: isDark ? Colors.white60 : Colors.grey.shade600,
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ],

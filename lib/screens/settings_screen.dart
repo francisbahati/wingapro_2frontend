@@ -69,14 +69,14 @@ class SettingsScreen extends StatelessWidget {
                     title: const Text('Logout'),
                     content: const Text('Are you sure you want to logout?'),
                     backgroundColor: isDark
-                        ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                        : Colors.white.withOpacity(0.95),
+                        ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.95),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
                         color: isDark
-                            ? Colors.white.withOpacity(0.15)
-                            : Colors.grey.shade300.withOpacity(0.5),
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.grey.shade300.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                     ),
@@ -119,14 +119,14 @@ class SettingsScreen extends StatelessWidget {
     return Card(
       elevation: 0,
       color: isDark
-          ? const Color(0xFF0A1A2B).withOpacity(0.95)
-          : Colors.white.withOpacity(0.95),
+          ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+          : Colors.white.withValues(alpha: 0.95),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: isDark
-              ? Colors.white.withOpacity(0.15)
-              : Colors.grey.shade300.withOpacity(0.5),
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.grey.shade300.withValues(alpha: 0.5),
           width: 1.5,
         ),
       ),

@@ -26,7 +26,6 @@ import 'business_staff/business_staff_dashboard_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -91,9 +90,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open link.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link.')),
+        );
+      }
     }
   }
 
@@ -111,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiConfig.headers,
         body: jsonEncode({
           'username': _identifierController.text.trim(),
           'password': _passwordController.text.trim(),
@@ -146,9 +147,9 @@ class _LoginScreenState extends State<LoginScreen> {
         await _auth.storage.write(key: 'jwt_token', value: data['accessToken']);
         await _auth.storage.write(key: 'refresh_token', value: data['refreshToken']);
         await _auth.storage.write(key: 'user_role', value: data['user']['role']);
-        // ❌ REMOVED: NotificationService().startPolling(); - No longer needed, FCM handles updates
+        // FCM handles notification updates
 
-        // 🔥 Initialize FCM after login
+        // Initialize FCM after login
         await FcmService.init();
 
         final role = data['user']['role'];
@@ -210,31 +211,37 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       throw ApiException(statusCode: response.statusCode, message: errorMessage);
     } on ApiException catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } on SocketException {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'No internet connection. Please check your network.',
-        ),
-      );
+      if (mounted) {
+        showErrorSnackbar(
+          context,
+          ApiException(
+            statusCode: null,
+            message: 'No internet connection. Please check your network.',
+          ),
+        );
+      }
     } on TimeoutException {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'Request timed out. The server may be busy. Please try again.',
-        ),
-      );
+      if (mounted) {
+        showErrorSnackbar(
+          context,
+          ApiException(
+            statusCode: null,
+            message: 'Request timed out. The server may be busy. Please try again.',
+          ),
+        );
+      }
     } catch (e) {
-      showErrorSnackbar(
-        context,
-        ApiException(
-          statusCode: null,
-          message: 'An unexpected error occurred. Please try again later.',
-        ),
-      );
+      if (mounted) {
+        showErrorSnackbar(
+          context,
+          ApiException(
+            statusCode: null,
+            message: 'An unexpected error occurred. Please try again later.',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -263,14 +270,14 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Card(
                 elevation: 0,
                 color: isDark
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.white.withOpacity(0.2),
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.2),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                   side: BorderSide(
                     color: isDark
-                        ? Colors.white.withOpacity(0.08)
-                        : Colors.white.withOpacity(0.2),
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.white.withValues(alpha: 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -334,8 +341,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (value) =>
                               value == null || value.trim().isEmpty
@@ -365,8 +372,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 filled: true,
                                 fillColor: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : Colors.white.withOpacity(0.3),
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.3),
                               ),
                               validator: (value) =>
                               value == null || value.trim().isEmpty

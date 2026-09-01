@@ -1,7 +1,6 @@
 // lib/screens/admin/admin_escrow_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -59,16 +58,18 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
         final purchasesData = jsonDecode(purchasesRes.body);
         if (summaryData['success'] && purchasesData['success']) {
           final all = purchasesData['purchases'] ?? [];
-          setState(() {
-            _summary = summaryData;
-            _pending = all
-                .where((p) => p['escrowStatus'] == 'paid_to_admin')
-                .toList();
-            _released = all
-                .where((p) => p['escrowStatus'] == 'released_to_seller')
-                .toList();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _summary = summaryData;
+              _pending = all
+                  .where((p) => p['escrowStatus'] == 'paid_to_admin')
+                  .toList();
+              _released = all
+                  .where((p) => p['escrowStatus'] == 'released_to_seller')
+                  .toList();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: 400,
@@ -83,25 +84,30 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (_errorTitle != null) {
       return Scaffold(
+        backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         appBar: AppBar(
           title: const Text('Escrow Management'),
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
-            IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _isLoading ? null : _fetchData),
           ],
         ),
         body: ErrorView(
@@ -113,12 +119,13 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
     }
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       appBar: AppBar(
         title: const Text('Escrow Management'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _isLoading ? null : _fetchData),
         ],
       ),
       body: _isLoading
@@ -131,14 +138,17 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
         child: Column(
           children: [
             GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.9),
               child: Column(
                 children: [
                   _buildSummaryRow('Total in Escrow',
                       _summary?['totalEscrow'] ?? 0),
                   _buildSummaryRow('Total Released',
                       _summary?['totalReleased'] ?? 0),
-                  _buildSummaryRow('Total Admin Profit',   // ✅ Corrected label
-                      _summary?['totalAdminProfit'] ?? 0),  // ✅ Correct field
+                  _buildSummaryRow('Total Admin Profit',
+                      _summary?['totalAdminProfit'] ?? 0),
                 ],
               ),
             ),
@@ -147,12 +157,15 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
                 Tab(text: 'Pending (${_pending.length})'),
                 Tab(text: 'Released (${_released.length})'),
               ],
+              indicatorColor: const Color(0xFF0A2E5C),
+              labelColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
+              unselectedLabelColor: isDark ? Colors.white60 : Colors.grey,
             ),
             Expanded(
               child: TabBarView(
                 children: [
-                  _buildOrderList(_pending, 'pending'),
-                  _buildOrderList(_released, 'released'),
+                  _buildOrderList(_pending, 'pending', isDark),
+                  _buildOrderList(_released, 'released', isDark),
                 ],
               ),
             ),
@@ -162,7 +175,7 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
     );
   }
 
-  Widget _buildOrderList(List<dynamic> orders, String type) {
+  Widget _buildOrderList(List<dynamic> orders, String type, bool isDark) {
     if (orders.isEmpty) {
       return Center(
         child: Text(type == 'pending'
@@ -176,6 +189,9 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
       itemBuilder: (ctx, i) {
         final p = orders[i];
         return GlassCard(
+          backgroundColor: isDark
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+              : Colors.white.withValues(alpha: 0.85),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -183,12 +199,16 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Order #${p['id']}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      )),
                   Chip(
                     label: Text(p['orderStatus'] ?? 'pending'),
                     backgroundColor: p['orderStatus'] == 'completed'
                         ? Colors.green
                         : Colors.orange,
+                    labelStyle: const TextStyle(color: Colors.white),
                   ),
                 ],
               ),
@@ -207,6 +227,7 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
   }
 
   Widget _buildSummaryRow(String label, dynamic value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     double parsedValue = 0.0;
     if (value != null) {
       if (value is double) parsedValue = value;
@@ -218,9 +239,15 @@ class _AdminEscrowScreenState extends State<AdminEscrowScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 16)),
+          Text(label, style: TextStyle(
+            fontSize: 16,
+            color: isDark ? Colors.white70 : Colors.grey.shade700,
+          )),
           Text('TZS ${parsedValue.toStringAsFixed(0)}',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              )),
         ],
       ),
     );

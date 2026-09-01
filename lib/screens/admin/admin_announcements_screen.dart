@@ -24,6 +24,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   final AuthService _auth = AuthService();
   List<Announcement> _announcements = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -52,10 +53,12 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           final list = data['announcements'] as List? ?? [];
-          setState(() {
-            _announcements = list.map((json) => Announcement.fromJson(json)).toList();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _announcements = list.map((json) => Announcement.fromJson(json)).toList();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -70,12 +73,14 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchAnnouncements);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -98,6 +103,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
     );
     if (confirm != true) return;
 
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -106,9 +112,11 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
       );
       if (response.statusCode == 200) {
         _fetchAnnouncements();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Announcement deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Announcement deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -116,7 +124,9 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -138,13 +148,13 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('New Announcement'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -169,7 +179,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<AnnouncementPriority>(
-                    value: selectedPriority,
+                    initialValue: selectedPriority,
                     items: AnnouncementPriority.values.map((p) {
                       String label = p.name.toUpperCase();
                       return DropdownMenuItem(
@@ -199,7 +209,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<AnnouncementAudienceType>(
-                    value: selectedAudienceType,
+                    initialValue: selectedAudienceType,
                     items: AnnouncementAudienceType.values.map((a) {
                       String label = a.name.replaceAll('_', ' ').toUpperCase();
                       return DropdownMenuItem(
@@ -217,7 +227,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                   const SizedBox(height: 12),
                   if (selectedAudienceType == AnnouncementAudienceType.role)
                     DropdownButtonFormField<String>(
-                      value: selectedRole,
+                      initialValue: selectedRole,
                       items: ['customer', 'seller', 'admin', 'staff']
                           .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                           .toList(),
@@ -307,11 +317,13 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                   if (response.statusCode == 201 && data['success'] == true) {
                     Navigator.pop(ctx);
                     _fetchAnnouncements();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Announcement sent!'),
-                          backgroundColor: Colors.green),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Announcement sent!'),
+                            backgroundColor: Colors.green),
+                      );
+                    }
                   } else {
                     throw ApiException(
                       statusCode: response.statusCode,
@@ -421,8 +433,8 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
             }
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -448,7 +460,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        backgroundColor: priorityColor.withOpacity(0.1),
+                        backgroundColor: priorityColor.withValues(alpha: 0.1),
                       ),
                     ],
                   ),
@@ -480,8 +492,17 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _deleteAnnouncement(a.id),
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.red),
+                        )
+                            : const Icon(Icons.delete, color: Colors.red),
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => _deleteAnnouncement(a.id),
                       ),
                     ],
                   ),
@@ -492,7 +513,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateAnnouncementDialog,
+        onPressed: _isSubmitting ? null : _showCreateAnnouncementDialog,
         backgroundColor: const Color(0xFF0A2E5C),
         child: const Icon(Icons.add, color: Colors.white),
       ),

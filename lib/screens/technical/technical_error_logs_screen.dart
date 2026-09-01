@@ -1,12 +1,14 @@
 // lib/screens/technical/technical_error_logs_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
+import '../../services/error_handler.dart';
 import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/error_view.dart';
+import '../../widgets/error_snackbar.dart';
 
 class TechnicalErrorLogsScreen extends StatefulWidget {
   final bool showAppBar;
@@ -22,6 +24,7 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _logs = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _error;
 
   @override
@@ -31,10 +34,11 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
   }
 
   Future<void> _fetchLogs() async {
+    if (_isRefreshing) return;
     setState(() { _isLoading = true; _error = null; });
     try {
       final token = await _auth.getToken();
-      if (token == null) throw Exception('Not logged in');
+      if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
       final response = await _api.get(
         context,
         '${ApiConfig.baseUrl}/api/technical/error-logs',
@@ -42,16 +46,33 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _logs = data['logs']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _logs = data['logs']; _isLoading = false; });
+          }
         } else {
-          throw Exception(data['message'] ?? 'Failed to load error logs');
+          throw ApiException(
+            statusCode: response.statusCode,
+            message: data['message'] ?? 'Failed to load error logs',
+          );
         }
       } else {
-        throw Exception('Server error: ${response.statusCode}');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Server error: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted) {
+        setState(() { _error = e.toString(); _isLoading = false; });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchLogs();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   @override
@@ -82,7 +103,7 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
         : _logs.isEmpty
         ? const Center(child: Text('No system errors or crash reports.'))
         : RefreshIndicator(
-      onRefresh: _fetchLogs,
+      onRefresh: _refreshData,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _logs.length,
@@ -90,8 +111,8 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
           final log = _logs[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: Colors.red,
@@ -125,13 +146,13 @@ class _TechnicalErrorLogsScreenState extends State<TechnicalErrorLogsScreen> {
                   builder: (ctx) => AlertDialog(
                     title: Text(log['title'] ?? 'Error Details'),
                     backgroundColor: isDark
-                        ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                        : Colors.white.withOpacity(0.95),
+                        ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.95),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
-                        color: isDark ? Colors.white.withOpacity(0.15)
-                            : Colors.grey.shade300.withOpacity(0.5),
+                        color: isDark ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.grey.shade300.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                     ),

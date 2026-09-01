@@ -29,6 +29,7 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   List<BannerModel.Banner> _banners = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -57,10 +58,12 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           final list = data['banners'] as List? ?? [];
-          setState(() {
-            _banners = list.map((json) => BannerModel.Banner.fromJson(json)).toList();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _banners = list.map((json) => BannerModel.Banner.fromJson(json)).toList();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -75,12 +78,14 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchBanners);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -97,6 +102,8 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
       ),
     );
     if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -105,9 +112,11 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
       );
       if (response.statusCode == 200) {
         _fetchBanners();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Banner deleted'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Banner deleted'), backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -115,7 +124,9 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -129,14 +140,12 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
         imageQuality: 85,
       );
       if (picked == null) return null;
-      // Ensure the file exists
       final file = File(picked.path);
       if (!await file.exists()) {
         throw Exception('Selected image file not found.');
       }
       return file;
     } catch (e) {
-      // Use the global error snackbar
       showErrorSnackbar(context, e);
       return null;
     }
@@ -169,8 +178,7 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
       }
       return croppedFile;
     } catch (e) {
-      // If cropping fails, we fall back to the original image
-      print('Cropping failed: $e – using original.');
+      debugPrint('Cropping failed: $e – using original.');
       return image;
     }
   }
@@ -179,30 +187,23 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleController = TextEditingController();
     bool isActive = true;
-    bool isSubmitting = false;
     File? _selectedImage;
     String? _imageUrl;
-
-    // Internal state update for the dialog
-    void updateDialogState(VoidCallback fn) {
-      if (mounted) {
-        setState(fn);
-      }
-    }
+    String? _imageKey; // NEW: store the R2 key
 
     showDialog(
       context: context,
-      barrierDismissible: !isSubmitting,
+      barrierDismissible: !_isSubmitting,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Add Banner'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -215,17 +216,17 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                   GestureDetector(
                     onTap: () async {
                       // Disable interaction during upload
-                      setStateDialog(() => isSubmitting = true);
+                      setStateDialog(() => _isSubmitting = true);
                       try {
                         final file = await _pickImage();
                         if (file == null) {
-                          setStateDialog(() => isSubmitting = false);
+                          setStateDialog(() => _isSubmitting = false);
                           return;
                         }
 
                         final cropped = await _cropImage(file);
                         if (cropped == null) {
-                          setStateDialog(() => isSubmitting = false);
+                          setStateDialog(() => _isSubmitting = false);
                           return;
                         }
 
@@ -233,19 +234,23 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                         setStateDialog(() {
                           _selectedImage = cropped;
                           _imageUrl = null;
+                          _imageKey = null;
                         });
 
                         // Upload to server
                         final result = await _bannerService.uploadImage(cropped);
                         setStateDialog(() {
                           _imageUrl = result['imageUrl'];
-                          isSubmitting = false;
+                          _imageKey = result['key']; // ✅ Store the key
+                          _isSubmitting = false;
                         });
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Image uploaded successfully'), backgroundColor: Colors.green),
-                        );
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Image uploaded successfully'), backgroundColor: Colors.green),
+                          );
+                        }
                       } catch (e) {
-                        setStateDialog(() => isSubmitting = false);
+                        setStateDialog(() => _isSubmitting = false);
                         showErrorSnackbar(ctx, e);
                       }
                     },
@@ -256,7 +261,7 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                         color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isDark ? Colors.white.withOpacity(0.2) : Colors.grey.shade400,
+                          color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.grey.shade400,
                         ),
                       ),
                       child: _selectedImage != null
@@ -330,11 +335,11 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: isSubmitting
+              onPressed: _isSubmitting
                   ? null
                   : () async {
                 final title = titleController.text.trim();
@@ -350,11 +355,18 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                   );
                   return;
                 }
-                setStateDialog(() => isSubmitting = true);
+                if (_imageKey == null || _imageKey!.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Image key missing – please re-upload'), backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+                setStateDialog(() => _isSubmitting = true);
                 try {
                   final body = {
                     'title': title,
                     'imageUrl': _imageUrl!,
+                    'key': _imageKey!, // ✅ Send the key
                     'link': null,
                     'order': 0,
                     'isActive': isActive,
@@ -368,9 +380,11 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                   if (response.statusCode == 201 && data['success'] == true) {
                     Navigator.pop(ctx);
                     _fetchBanners();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Banner created!'), backgroundColor: Colors.green),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Banner created!'), backgroundColor: Colors.green),
+                      );
+                    }
                   } else {
                     throw ApiException(
                       statusCode: response.statusCode,
@@ -379,10 +393,10 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                   }
                 } catch (e) {
                   showErrorSnackbar(ctx, e);
-                  setStateDialog(() => isSubmitting = false);
+                  setStateDialog(() => _isSubmitting = false);
                 }
               },
-              child: isSubmitting
+              child: _isSubmitting
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('Create'),
             ),
@@ -454,8 +468,8 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
             final b = _banners[i];
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 leading: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -480,14 +494,15 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                     color: isDark ? Colors.white70 : Colors.grey.shade600,
                   ),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteBanner(b.id),
-                    ),
-                  ],
+                trailing: IconButton(
+                  icon: _isSubmitting
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Icon(Icons.delete, color: Colors.red),
+                  onPressed: _isSubmitting ? null : () => _deleteBanner(b.id),
                 ),
               ),
             );

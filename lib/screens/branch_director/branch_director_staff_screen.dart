@@ -1,7 +1,6 @@
 // lib/screens/branch_director/branch_director_staff_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -54,7 +53,9 @@ class _BranchDirectorStaffScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _staff = data['staff']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _staff = data['staff']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -62,7 +63,9 @@ class _BranchDirectorStaffScreenState
           );
         }
       } else if (response.statusCode == 400) {
-        setState(() { _noBranch = true; _isLoading = false; });
+        if (mounted) {
+          setState(() { _noBranch = true; _isLoading = false; });
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -71,12 +74,14 @@ class _BranchDirectorStaffScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchStaff);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -129,8 +134,8 @@ class _BranchDirectorStaffScreenState
           final s = _staff[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: const Color(0xFF0A2E5C),

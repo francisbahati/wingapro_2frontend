@@ -1,7 +1,6 @@
 // lib/screens/technical/technical_profile_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -11,6 +10,8 @@ import '../../widgets/profile_header.dart';
 import '../../widgets/glass_card.dart';
 import '../login_screen.dart';
 import '../settings_screen.dart';
+import '../../services/error_handler.dart';
+import '../../widgets/error_snackbar.dart';
 
 class TechnicalProfileScreen extends StatefulWidget {
   final bool showAppBar;
@@ -26,9 +27,9 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
   final ApiService _api = ApiService();
   Map<String, dynamic>? _user;
   bool _isLoading = true;
-  String? _error;
   bool _isUpdating = false;
   bool _isLoggingOut = false;
+  String? _error;
 
   @override
   void initState() {
@@ -48,7 +49,7 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _user = data['user']; _isLoading = false; });
+          if (mounted) setState(() { _user = data['user']; _isLoading = false; });
         } else {
           throw Exception(data['message'] ?? 'Failed to load profile');
         }
@@ -56,7 +57,7 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
         throw Exception('Server error: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
   }
 
@@ -72,17 +73,17 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile updated'), backgroundColor: Colors.green),
+          );
+        }
         _fetchProfile();
       } else {
         throw Exception(data['message'] ?? 'Update failed');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
@@ -104,21 +105,19 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Password changed successfully!'),
-              backgroundColor: Colors.green),
-        );
-        Navigator.pop(dialogContext);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Password changed successfully!'),
+                backgroundColor: Colors.green),
+          );
+          Navigator.pop(dialogContext);
+        }
       } else {
         throw Exception(data['message'] ?? 'Change failed');
       }
     } catch (e) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(
-        SnackBar(
-            content: Text('Error: ${e.toString().replaceFirst('Exception: ', '')}'),
-            backgroundColor: Colors.red),
-      );
+      if (mounted) showErrorSnackbar(dialogContext, e);
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
@@ -129,7 +128,7 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
     setState(() => _isLoggingOut = true);
     await _auth.logout();
     NotificationService().stopPolling();
-    if (context.mounted) {
+    if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -179,8 +178,8 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.95),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             child: ListTile(
               leading: const Icon(Icons.edit,
                   color: Color(0xFF0A2E5C)),
@@ -192,16 +191,17 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
                 TextEditingController(text: phone);
                 showDialog(
                   context: context,
+                  barrierDismissible: !_isUpdating,
                   builder: (ctx) => AlertDialog(
                     title: const Text('Edit Profile'),
                     backgroundColor: isDark
-                        ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                        : Colors.white.withOpacity(0.95),
+                        ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.95),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
-                        color: isDark ? Colors.white.withOpacity(0.15)
-                            : Colors.grey.shade300.withOpacity(0.5),
+                        color: isDark ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.grey.shade300.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                     ),
@@ -246,8 +246,8 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
           const SizedBox(height: 8),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.95),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             child: ListTile(
               leading: const Icon(Icons.lock,
                   color: Color(0xFF0A2E5C)),
@@ -258,8 +258,8 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
           const SizedBox(height: 8),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.95),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             child: ListTile(
               leading: const Icon(Icons.settings,
                   color: Color(0xFF0A2E5C)),
@@ -276,13 +276,20 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.95),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             child: ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
+              leading: _isLoggingOut
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.red),
+              )
+                  : const Icon(Icons.logout, color: Colors.red),
               title: const Text('Logout',
                   style: TextStyle(color: Colors.red)),
-              onTap: _logout,
+              onTap: _isLoggingOut ? null : _logout,
             ),
           ),
         ],
@@ -319,13 +326,13 @@ class _TechnicalProfileScreenState extends State<TechnicalProfileScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Change Password'),
         backgroundColor: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),

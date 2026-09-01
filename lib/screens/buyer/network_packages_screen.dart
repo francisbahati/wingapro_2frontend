@@ -36,6 +36,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
   List<dynamic> _allPackages = [];
   List<dynamic> _filteredPackages = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -67,6 +68,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
   }
 
   Future<void> _fetchPackages() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -88,7 +90,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
             .where((p) => p['packageType'] == 'customer' && p['is_active'] == true)
             .toList();
         _applyFilters();
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -97,13 +99,22 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPackages);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchPackages();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   void _applyFilters() {
@@ -135,14 +146,16 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
       filtered = filtered.where((p) => _parsePrice(p['price']) <= widget.maxPrice!).toList();
     }
 
-    setState(() => _filteredPackages = filtered);
+    if (mounted) setState(() => _filteredPackages = filtered);
   }
 
   void _buyPackage(dynamic package) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final price = _parsePrice(package['price']);
     final displayPrice = NumberFormat('#,###').format(price);
+    final RegExp _phoneRegex = RegExp(r'^(0|255|\+255)?[67]\d{8}$');
 
     showDialog(
       context: context,
@@ -152,6 +165,9 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
+          backgroundColor: isDark
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           title: Row(
             children: [
               const Icon(Icons.shopping_cart, color: Color(0xFF0A2E5C)),
@@ -166,26 +182,30 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
+                    color: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade200),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         package['name'] ?? 'Package',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16,
+                            color: isDark ? Colors.white : Colors.black87),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                          'Data: ${package['dataSize']} • Validity: ${package['validity']}'),
+                          'Data: ${package['dataSize']} • Validity: ${package['validity']}',
+                          style: TextStyle(
+                            color: isDark ? Colors.white70 : Colors.grey.shade700,
+                          )),
                       const SizedBox(height: 4),
                       Text(
                         'Price: TZS $displayPrice',
-                        style: const TextStyle(
-                            color: Color(0xFF0A2E5C),
+                        style: TextStyle(
+                            color: const Color(0xFF0A2E5C),
                             fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -200,7 +220,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
                         borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.person),
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade50,
                     contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
@@ -217,9 +237,14 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
                     prefixIcon: const Icon(Icons.phone),
                     counterText: '',
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade50,
                     contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    helperText: 'e.g., 0712345678',
+                    helperStyle: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.grey.shade600,
+                    ),
                   ),
                 ),
               ],
@@ -242,11 +267,12 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
                   );
                   return;
                 }
-                if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+                if (!_phoneRegex.hasMatch(phone)) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(
-                        content: Text('Phone must be exactly 10 digits'),
-                        backgroundColor: Colors.red),
+                      content: Text('Enter a valid Tanzanian mobile number'),
+                      backgroundColor: Colors.red,
+                    ),
                   );
                   return;
                 }
@@ -294,7 +320,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: _fetchPackages,
+              onPressed: _refreshData,
             ),
           ],
         ),
@@ -318,7 +344,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _fetchPackages,
+            onPressed: _refreshData,
           ),
         ],
       ),
@@ -347,7 +373,7 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
         ),
       )
           : RefreshIndicator(
-        onRefresh: _fetchPackages,
+        onRefresh: _refreshData,
         color: const Color(0xFF0A2E5C),
         child: ListView.builder(
           padding: const EdgeInsets.all(16),
@@ -365,13 +391,13 @@ class _NetworkPackagesScreenState extends State<NetworkPackagesScreen>
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
                     color: isDark
-                        ? Colors.white.withOpacity(0.08)
+                        ? Colors.white.withValues(alpha: 0.08)
                         : Colors.grey.shade200,
                     width: 1,
                   ),
                 ),
                 color: isDark
-                    ? Colors.grey.shade800.withOpacity(0.6)
+                    ? Colors.grey.shade800.withValues(alpha: 0.6)
                     : Colors.white,
                 margin: const EdgeInsets.only(bottom: 16),
                 child: Padding(

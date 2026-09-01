@@ -1,12 +1,14 @@
 // lib/screens/technical/technical_communication_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
+import '../../services/error_handler.dart';
 import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/error_view.dart';
+import '../../widgets/error_snackbar.dart';
 
 class TechnicalCommunicationScreen extends StatefulWidget {
   final bool showAppBar;
@@ -23,8 +25,8 @@ class _TechnicalCommunicationScreenState
   final ApiService _api = ApiService();
   List<dynamic> _messages = [];
   bool _isLoading = true;
-  String? _error;
   bool _isSending = false;
+  String? _error;
 
   @override
   void initState() {
@@ -36,7 +38,7 @@ class _TechnicalCommunicationScreenState
     setState(() { _isLoading = true; _error = null; });
     try {
       final token = await _auth.getToken();
-      if (token == null) throw Exception('Not logged in');
+      if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
       final response = await _api.get(
         context,
         '${ApiConfig.baseUrl}/api/technical/communication',
@@ -44,15 +46,25 @@ class _TechnicalCommunicationScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _messages = data['messages']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _messages = data['messages']; _isLoading = false; });
+          }
         } else {
-          throw Exception(data['message'] ?? 'Failed to load messages');
+          throw ApiException(
+            statusCode: response.statusCode,
+            message: data['message'] ?? 'Failed to load messages',
+          );
         }
       } else {
-        throw Exception('Server error: ${response.statusCode}');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Server error: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted) {
+        setState(() { _error = e.toString(); _isLoading = false; });
+      }
     }
   }
 
@@ -68,16 +80,19 @@ class _TechnicalCommunicationScreenState
       );
       if (response.statusCode == 201) {
         _fetchMessages();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message sent'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Message sent'), backgroundColor: Colors.green),
+          );
+        }
       } else {
-        throw Exception('Failed to send');
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Failed to send',
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -92,13 +107,13 @@ class _TechnicalCommunicationScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('Send Communication'),
         backgroundColor: isDark
-            ? const Color(0xFF0A1A2B).withOpacity(0.95)
-            : Colors.white.withOpacity(0.95),
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.15)
-                : Colors.grey.shade300.withOpacity(0.5),
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
             width: 1.5,
           ),
         ),
@@ -109,7 +124,7 @@ class _TechnicalCommunicationScreenState
             labelText: 'Message',
             filled: true,
             fillColor: isDark
-                ? Colors.grey.shade800.withOpacity(0.5)
+                ? Colors.grey.shade800.withValues(alpha: 0.5)
                 : Colors.grey.shade100,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -176,8 +191,8 @@ class _TechnicalCommunicationScreenState
           final m = _messages[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -211,9 +226,15 @@ class _TechnicalCommunicationScreenState
       return Scaffold(
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         floatingActionButton: FloatingActionButton(
-          onPressed: _showSendDialog,
+          onPressed: _isSending ? null : _showSendDialog,
           backgroundColor: const Color(0xFF0A2E5C),
-          child: const Icon(Icons.send, color: Colors.white),
+          child: _isSending
+              ? const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          )
+              : const Icon(Icons.send, color: Colors.white),
         ),
         body: body,
       );
@@ -229,9 +250,15 @@ class _TechnicalCommunicationScreenState
         foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showSendDialog,
+        onPressed: _isSending ? null : _showSendDialog,
         backgroundColor: const Color(0xFF0A2E5C),
-        child: const Icon(Icons.send, color: Colors.white),
+        child: _isSending
+            ? const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+        )
+            : const Icon(Icons.send, color: Colors.white),
       ),
       body: body,
     );

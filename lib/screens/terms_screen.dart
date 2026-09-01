@@ -78,6 +78,7 @@ class _TermsScreenState extends State<TermsScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
+      backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
       body: Container(
         decoration: BoxDecoration(
             gradient: isDark
@@ -148,12 +149,12 @@ class _TermsScreenState extends State<TermsScreen>
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : Colors.white.withOpacity(0.15),
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.white.withValues(alpha: 0.15),
                   border: Border(
                       top: BorderSide(
-                          color: Colors.white.withOpacity(
-                              isDark ? 0.08 : 0.15),
+                          color: Colors.white.withValues(
+                              alpha: isDark ? 0.08 : 0.15),
                           width: 1.5)),
                 ),
                 child: ClipRRect(
@@ -226,12 +227,12 @@ class _TermsScreenState extends State<TermsScreen>
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 0,
       color: isDark
-          ? Colors.white.withOpacity(0.04)
-          : Colors.white.withOpacity(0.1),
+          ? Colors.white.withValues(alpha: 0.04)
+          : Colors.white.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-            color: Colors.white.withOpacity(isDark ? 0.06 : 0.15),
+            color: Colors.white.withValues(alpha: isDark ? 0.06 : 0.15),
             width: 1.5),
       ),
       child: ClipRRect(
@@ -254,7 +255,7 @@ class _TermsScreenState extends State<TermsScreen>
                         fontSize: 15,
                         height: 1.5,
                         color: isDark ? Colors.white70
-                            : Colors.white.withOpacity(0.8))),
+                            : Colors.white.withValues(alpha: 0.8))),
               ],
             ),
           ),

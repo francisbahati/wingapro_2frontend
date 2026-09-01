@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,6 +24,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
   double _balance = 0.0;
   List<dynamic> _transactions = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -36,6 +36,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
   }
 
   Future<void> _fetchWalletData() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -52,11 +53,13 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _balance = (data['balance'] ?? 0.0).toDouble();
-            _transactions = data['transactions'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _balance = (data['balance'] ?? 0.0).toDouble();
+              _transactions = data['transactions'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -71,13 +74,22 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchWalletData);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchWalletData();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   String _formatAmount(double amount) {
@@ -113,13 +125,13 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
     Widget body = _isLoading
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-      onRefresh: _fetchWalletData,
+      onRefresh: _refreshData,
       color: const Color(0xFF0A2E5C),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           GlassCard(
-            backgroundColor: const Color(0xFF0A2E5C).withOpacity(0.95),
+            backgroundColor: const Color(0xFF0A2E5C).withValues(alpha: 0.95),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -140,7 +152,9 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () async {
+                    onPressed: _isRefreshing
+                        ? null
+                        : () async {
                       await Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -150,10 +164,20 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                           ),
                         ),
                       );
-                      _fetchWalletData();
+                      await _refreshData();
                     },
-                    icon: const Icon(Icons.payment),
-                    label: const Text('Deposit / Withdraw'),
+                    icon: _isRefreshing
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF0A2E5C)),
+                    )
+                        : const Icon(Icons.payment),
+                    label: _isRefreshing
+                        ? const Text('Loading...')
+                        : const Text('Deposit / Withdraw'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF0A2E5C),
@@ -196,8 +220,8 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   : tx['date'] ?? '';
               return GlassCard(
                 backgroundColor: isDark
-                    ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                    : Colors.white.withOpacity(0.85),
+                    ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                    : Colors.white.withValues(alpha: 0.85),
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: isCredit

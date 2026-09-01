@@ -1,7 +1,6 @@
 // lib/screens/technical/technical_staff_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _staff = [];
   bool _isLoading = true;
+  bool _isSubmitting = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -51,10 +51,12 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _staff = data['staff'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _staff = data['staff'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -69,12 +71,14 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchStaff);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -105,12 +109,12 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Create Staff User'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -126,7 +130,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                       labelText: 'Username *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -141,7 +145,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                       labelText: 'Email *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -156,7 +160,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                       labelText: 'Phone',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -172,7 +176,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                       labelText: 'Password *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -190,7 +194,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                   const SizedBox(height: 12),
                   // ✅ Dropdown without 'admin' role
                   DropdownButtonFormField<String>(
-                    value: selectedRole,
+                    initialValue: selectedRole,
                     items: allowedRoles.map((r) => DropdownMenuItem(
                       value: r,
                       child: Text(r),
@@ -200,7 +204,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                       labelText: 'Role',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -250,11 +254,13 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                   if (response.statusCode == 201 && data['success'] == true) {
                     Navigator.pop(ctx);
                     _fetchStaff();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Staff created'),
-                          backgroundColor: Colors.green),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Staff created'),
+                            backgroundColor: Colors.green),
+                      );
+                    }
                   } else {
                     throw ApiException(
                       statusCode: response.statusCode,
@@ -262,7 +268,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
                     );
                   }
                 } catch (e) {
-                  showErrorSnackbar(ctx, e);
+                  if (mounted) showErrorSnackbar(ctx, e);
                   setStateDialog(() => isSubmitting = false);
                 }
               },
@@ -324,8 +330,8 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
           final s = _staff[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 child: Text(
@@ -359,7 +365,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
       return Scaffold(
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
         floatingActionButton: FloatingActionButton(
-          onPressed: _createStaff,
+          onPressed: _isSubmitting ? null : _createStaff,
           backgroundColor: const Color(0xFF0A2E5C),
           child: const Icon(Icons.add, color: Colors.white),
         ),
@@ -377,7 +383,7 @@ class _TechnicalStaffScreenState extends State<TechnicalStaffScreen> {
         foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _createStaff,
+        onPressed: _isSubmitting ? null : _createStaff,
         backgroundColor: const Color(0xFF0A2E5C),
         child: const Icon(Icons.add, color: Colors.white),
       ),

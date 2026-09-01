@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -28,6 +27,8 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
   List<dynamic> _availablePackages = [];
   bool _isLoading = true;
   bool _loadingAvailable = false;
+  bool _isProcessing = false;
+  int? _processingPackageId;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -71,10 +72,12 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _adoptedPackages = data['packages'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _adoptedPackages = data['packages'] ?? [];
+              _isLoading = false;
+            });
+          }
           _fetchAvailablePackages(silent: true);
         } else {
           throw ApiException(
@@ -90,12 +93,14 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPackages);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -111,10 +116,12 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _availablePackages = data['packages'] ?? [];
-            _loadingAvailable = false;
-          });
+          if (mounted) {
+            setState(() {
+              _availablePackages = data['packages'] ?? [];
+              _loadingAvailable = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -129,13 +136,17 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       }
     } catch (e) {
       if (!silent) {
-        showErrorSnackbar(context, e);
+        if (mounted) showErrorSnackbar(context, e);
       }
-      setState(() => _loadingAvailable = false);
+      if (mounted) setState(() => _loadingAvailable = false);
     }
   }
 
   Future<void> _adoptPackage(int packageId) async {
+    setState(() {
+      _isProcessing = true;
+      _processingPackageId = packageId;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.post(
@@ -144,9 +155,11 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package adopted!'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Package adopted!'), backgroundColor: Colors.green),
+          );
+        }
         await _fetchPackages();
       } else {
         throw ApiException(
@@ -155,7 +168,14 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _processingPackageId = null;
+        });
+      }
     }
   }
 
@@ -174,15 +194,18 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remove', style: TextStyle(color: Colors.white)),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Remove', style: TextStyle(color: Colors.white))),
         ],
       ),
     );
     if (confirmed != true) return;
 
+    setState(() {
+      _isProcessing = true;
+      _processingPackageId = packageId;
+    });
     try {
       final token = await _auth.getToken();
       final response = await _api.delete(
@@ -191,9 +214,11 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package removed'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Package removed'), backgroundColor: Colors.green),
+          );
+        }
         await _fetchPackages();
       } else {
         throw ApiException(
@@ -202,7 +227,14 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _processingPackageId = null;
+        });
+      }
     }
   }
 
@@ -232,7 +264,7 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
             padding: const EdgeInsets.symmetric(
                 horizontal: 16, vertical: 8),
             color: isDark
-                ? Colors.grey.shade800.withOpacity(0.5)
+                ? Colors.grey.shade800.withValues(alpha: 0.5)
                 : Colors.grey.shade50,
             child: Row(
               children: [
@@ -290,11 +322,12 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
                   itemBuilder: (ctx, i) {
                     final p = _adoptedPackages[i];
                     final price = _parsePrice(p['price']);
+                    final isProcessing = _isProcessing && _processingPackageId == p['id'];
                     return GlassCard(
                       backgroundColor: isDark
                           ? const Color(0xFF0A1A2B)
-                          .withOpacity(0.85)
-                          : Colors.white.withOpacity(0.85),
+                          .withValues(alpha: 0.85)
+                          : Colors.white.withValues(alpha: 0.85),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
@@ -364,16 +397,27 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
                               alignment:
                               Alignment.centerRight,
                               child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    _unadoptPackage(
-                                      p['id'],
-                                      p['name'] ?? 'Package',
-                                    ),
-                                icon: const Icon(
+                                onPressed: isProcessing
+                                    ? null
+                                    : () => _unadoptPackage(
+                                  p['id'],
+                                  p['name'] ?? 'Package',
+                                ),
+                                icon: isProcessing
+                                    ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.red),
+                                )
+                                    : const Icon(
                                     Icons.remove_circle,
                                     size: 18,
                                     color: Colors.red),
-                                label: const Text('Unadopt'),
+                                label: isProcessing
+                                    ? const Text('Removing...')
+                                    : const Text('Unadopt'),
                                 style: OutlinedButton
                                     .styleFrom(
                                   foregroundColor: Colors.red,
@@ -420,11 +464,12 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
                   itemBuilder: (ctx, i) {
                     final p = _availablePackages[i];
                     final price = _parsePrice(p['price']);
+                    final isProcessing = _isProcessing && _processingPackageId == p['id'];
                     return GlassCard(
                       backgroundColor: isDark
                           ? const Color(0xFF0A1A2B)
-                          .withOpacity(0.85)
-                          : Colors.white.withOpacity(0.85),
+                          .withValues(alpha: 0.85)
+                          : Colors.white.withValues(alpha: 0.85),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
@@ -500,11 +545,22 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
                               alignment:
                               Alignment.centerRight,
                               child: ElevatedButton.icon(
-                                onPressed: () =>
-                                    _adoptPackage(
-                                        p['id']),
-                                icon: const Icon(Icons.add),
-                                label: const Text('Adopt'),
+                                onPressed: isProcessing
+                                    ? null
+                                    : () => _adoptPackage(
+                                    p['id']),
+                                icon: isProcessing
+                                    ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white),
+                                )
+                                    : const Icon(Icons.add),
+                                label: isProcessing
+                                    ? const Text('Adopting...')
+                                    : const Text('Adopt'),
                                 style: ElevatedButton
                                     .styleFrom(
                                   backgroundColor:
@@ -559,7 +615,7 @@ class _SellerPackagesScreenState extends State<SellerPackagesScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(

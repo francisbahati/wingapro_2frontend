@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _sales = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -35,6 +35,7 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
   }
 
   Future<void> _fetchSales() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -51,7 +52,9 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _sales = data['sales']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _sales = data['sales']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -66,13 +69,22 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchSales);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchSales();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   String _getStatusLabel(String? status) {
@@ -136,22 +148,21 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
         : _sales.isEmpty
         ? const Center(child: Text('No sales yet.'))
         : RefreshIndicator(
-      onRefresh: _fetchSales,
+      onRefresh: _refreshData,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _sales.length,
         itemBuilder: (ctx, i) {
           final s = _sales[i];
-          final sellerAmount = _parseAmount(s['sellerAmount']) ??
-              _parseAmount(s['amount']) ?? 0.0;
+          final sellerAmount = _parseAmount(s['sellerAmount']);
           final orderStatus = s['orderStatus'] ?? 'payment_received';
           final statusLabel = _getStatusLabel(orderStatus);
           final statusColor = _getStatusColor(orderStatus);
 
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             padding: const EdgeInsets.symmetric(
                 horizontal: 12, vertical: 8),
             child: Row(

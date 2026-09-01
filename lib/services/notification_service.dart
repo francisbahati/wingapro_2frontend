@@ -16,19 +16,15 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  // ❌ REMOVED: Timer? _pollTimer; - No more polling!
   int _currentUnreadCount = 0;
   final List<void Function(int)> _listeners = [];
   final List<void Function(int)> _newNotificationListeners = [];
 
-  // Lock to prevent multiple simultaneous refresh attempts
   bool _isRefreshing = false;
 
-  // ---- Local Notifications Plugin ----
   final FlutterLocalNotificationsPlugin _localPlugin =
   FlutterLocalNotificationsPlugin();
 
-  // ---- Initialize Local Notifications ----
   Future<void> initializeLocalNotifications() async {
     const AndroidInitializationSettings androidSettings =
     AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -124,26 +120,14 @@ class NotificationService {
     );
   }
 
-  // ============================================================
-  // ❌ REMOVED: startPolling() – No more automatic polling
-  // ============================================================
-  // The app now relies on FCM data messages to trigger updates.
-  // Call fetchUnreadCount() manually when needed (e.g., on FCM message).
-
   void stopPolling() {
-    // No timer to stop – kept for backward compatibility
-    // This method is now a no-op
+    // No-op for backward compatibility
   }
 
-  // ============================================================
-  // FCM TRIGGER – Call this when an FCM data message arrives
-  // ============================================================
   Future<void> onFcmMessageReceived() async {
-    // Refresh the unread count and show local notification
     final previousCount = _currentUnreadCount;
     await fetchUnreadCount();
     if (_currentUnreadCount > previousCount) {
-      // Show local notification for the new message
       await _showLocalNotificationForNewNotifications();
       for (var l in _newNotificationListeners) {
         l(_currentUnreadCount);
@@ -151,9 +135,6 @@ class NotificationService {
     }
   }
 
-  // ============================================================
-  // LISTENERS
-  // ============================================================
   void addListener(void Function(int count) listener) => _listeners.add(listener);
   void removeListener(void Function(int count) listener) =>
       _listeners.remove(listener);
@@ -166,9 +147,6 @@ class NotificationService {
     for (var l in _listeners) l(count);
   }
 
-  // ============================================================
-  // API CALLS
-  // ============================================================
   Future<String?> _getToken() async => await _storage.read(key: 'jwt_token');
 
   Future<Map<String, String>> _authHeaders() async {
@@ -180,7 +158,6 @@ class NotificationService {
   }
 
   Future<int> fetchUnreadCount() async {
-    // If a refresh is already in progress, return current count
     if (_isRefreshing) {
       int attempts = 0;
       while (_isRefreshing && attempts < 50) {

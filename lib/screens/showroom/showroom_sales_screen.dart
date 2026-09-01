@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -24,6 +23,7 @@ class _ShowroomSalesScreenState extends State<ShowroomSalesScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _sales = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -45,6 +45,7 @@ class _ShowroomSalesScreenState extends State<ShowroomSalesScreen> {
   }
 
   Future<void> _fetchSales() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -61,7 +62,9 @@ class _ShowroomSalesScreenState extends State<ShowroomSalesScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _sales = data['sales']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _sales = data['sales']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -76,12 +79,14 @@ class _ShowroomSalesScreenState extends State<ShowroomSalesScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchSales);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -112,8 +117,8 @@ class _ShowroomSalesScreenState extends State<ShowroomSalesScreen> {
           final s = _sales[i];
           return GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                : Colors.white.withOpacity(0.85),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.85),
             child: ListTile(
               leading: CircleAvatar(
                 child: Text(

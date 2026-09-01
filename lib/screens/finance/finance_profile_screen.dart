@@ -1,21 +1,22 @@
 // lib/screens/finance/finance_profile_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
 import '../../services/notification_service.dart';
 import '../../services/error_handler.dart';
-import '../../widgets/profile_header.dart';
 import '../../widgets/skeleton_loading.dart';
+import '../../widgets/profile_header.dart';
+import '../../widgets/glass_card.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/error_snackbar.dart';
 import '../login_screen.dart';
 import '../settings_screen.dart';
 
 class FinanceProfileScreen extends StatefulWidget {
-  const FinanceProfileScreen({super.key});
+  final bool showAppBar;
+  const FinanceProfileScreen({super.key, this.showAppBar = true});
 
   @override
   State<FinanceProfileScreen> createState() => _FinanceProfileScreenState();
@@ -26,11 +27,11 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
   final ApiService _api = ApiService();
   Map<String, dynamic>? _user;
   bool _isLoading = true;
+  bool _isUpdating = false;
+  bool _isLoggingOut = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isUpdating = false;
-  bool _isLoggingOut = false;
 
   @override
   void initState() {
@@ -55,7 +56,9 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _user = data['user']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _user = data['user']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -70,12 +73,14 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchProfile);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -91,9 +96,11 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated'), backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile updated'), backgroundColor: Colors.green),
+          );
+        }
         _fetchProfile();
       } else {
         throw ApiException(
@@ -102,7 +109,7 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
@@ -124,12 +131,14 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
       );
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Password changed successfully!'),
-              backgroundColor: Colors.green),
-        );
-        Navigator.pop(dialogContext);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Password changed successfully!'),
+                backgroundColor: Colors.green),
+          );
+          Navigator.pop(dialogContext);
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -137,7 +146,7 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(dialogContext, e);
+      if (mounted) showErrorSnackbar(dialogContext, e);
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
@@ -148,7 +157,7 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
     setState(() => _isLoggingOut = true);
     await _auth.logout();
     NotificationService().stopPolling();
-    if (context.mounted) {
+    if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -207,92 +216,64 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
               role: 'Finance Team',
             ),
             const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Edit Profile'),
-              onTap: () {
-                final nameController =
-                TextEditingController(text: username);
-                final phoneController =
-                TextEditingController(text: phone);
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Edit Profile'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        TextField(
-                            controller: nameController,
-                            decoration: const InputDecoration(
-                                labelText: 'Username')),
-                        const SizedBox(height: 12),
-                        TextField(
-                            controller: phoneController,
-                            decoration: const InputDecoration(
-                                labelText: 'Phone')),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel')),
-                      ElevatedButton(
-                        onPressed: _isUpdating ? null : () {
-                          _updateProfile(
-                            nameController.text.trim(),
-                            phoneController.text.trim(),
-                          );
-                          Navigator.pop(ctx);
-                        },
-                        child: _isUpdating
-                            ? const SizedBox(width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2))
-                            : const Text('Save'),
-                      ),
-                    ],
-                  ),
-                );
-              },
+            GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
+              child: ListTile(
+                leading: const Icon(Icons.edit,
+                    color: Color(0xFF0A2E5C)),
+                title: const Text('Edit Profile'),
+                onTap: _showEditProfileDialog,
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.lock),
-              title: const Text('Change Password'),
-              onTap: () => _showChangePasswordDialog(),
+            const SizedBox(height: 8),
+            GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
+              child: ListTile(
+                leading: const Icon(Icons.lock,
+                    color: Color(0xFF0A2E5C)),
+                title: const Text('Change Password'),
+                onTap: _showChangePasswordDialog,
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const SettingsScreen()),
-                );
-              },
+            const SizedBox(height: 8),
+            GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
+              child: ListTile(
+                leading: const Icon(Icons.settings,
+                    color: Color(0xFF0A2E5C)),
+                title: const Text('Settings'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SettingsScreen()),
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isLoggingOut ? null : _logout,
-                icon: _isLoggingOut
+            GlassCard(
+              backgroundColor: isDark
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
+              child: ListTile(
+                leading: _isLoggingOut
                     ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white),
+                      strokeWidth: 2, color: Colors.red),
                 )
-                    : const Icon(Icons.logout),
-                label: Text(_isLoggingOut ? 'Logging out...' : 'Logout'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+                    : const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Logout',
+                    style: TextStyle(color: Colors.red)),
+                onTap: _isLoggingOut ? null : _logout,
               ),
             ),
           ],
@@ -301,7 +282,70 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
     );
   }
 
+  void _showEditProfileDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final nameController =
+    TextEditingController(text: _user?['username'] ?? '');
+    final phoneController = TextEditingController(text: _user?['phone'] ?? '');
+    showDialog(
+      context: context,
+      barrierDismissible: !_isUpdating,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Profile'),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Username')),
+            const SizedBox(height: 12),
+            TextField(
+                controller: phoneController,
+                decoration: const InputDecoration(labelText: 'Phone')),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: _isUpdating ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: _isUpdating ? null : () {
+              final name = nameController.text.trim();
+              final phone = phoneController.text.trim();
+              if (name.isNotEmpty) {
+                _updateProfile(name, phone);
+                Navigator.pop(ctx);
+              } else {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                      content: Text('Username cannot be empty'),
+                      backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: _isUpdating
+                ? const SizedBox(width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showChangePasswordDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final oldController = TextEditingController();
     final newController = TextEditingController();
     showDialog(
@@ -309,6 +353,17 @@ class _FinanceProfileScreenState extends State<FinanceProfileScreen> {
       barrierDismissible: !_isUpdating,
       builder: (ctx) => AlertDialog(
         title: const Text('Change Password'),
+        backgroundColor: isDark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

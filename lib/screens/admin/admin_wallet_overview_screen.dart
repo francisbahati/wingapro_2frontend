@@ -25,6 +25,7 @@ class _AdminWalletOverviewScreenState
   List<dynamic> _users = [];
   double _totalBalance = 0.0;
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -36,6 +37,7 @@ class _AdminWalletOverviewScreenState
   }
 
   Future<void> _fetchWalletOverview() async {
+    if (_isRefreshing) return;
     setState(() {
       _isLoading = true;
       _errorTitle = null;
@@ -52,11 +54,13 @@ class _AdminWalletOverviewScreenState
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _users = data['users'] ?? [];
-            _totalBalance = (data['totalBalance'] ?? 0.0).toDouble();
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _users = data['users'] ?? [];
+              _totalBalance = (data['totalBalance'] ?? 0.0).toDouble();
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -71,13 +75,22 @@ class _AdminWalletOverviewScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchWalletOverview);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await _fetchWalletOverview();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   double _parseBalance(dynamic value) {
@@ -125,8 +138,14 @@ class _AdminWalletOverviewScreenState
         foregroundColor: isDark ? Colors.white : const Color(0xFF0A2E5C),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchWalletOverview,
+            icon: _isRefreshing
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _refreshData,
             color: const Color(0xFF0A2E5C),
           ),
         ],
@@ -149,7 +168,7 @@ class _AdminWalletOverviewScreenState
         ),
       )
           : RefreshIndicator(
-        onRefresh: _fetchWalletOverview,
+        onRefresh: _refreshData,
         child: Column(
           children: [
             // Total Balance Card
@@ -157,8 +176,8 @@ class _AdminWalletOverviewScreenState
               padding: const EdgeInsets.all(16),
               child: GlassCard(
                 backgroundColor: isDark
-                    ? const Color(0xFF0A2E5C).withOpacity(0.9)
-                    : const Color(0xFF0A2E5C).withOpacity(0.95),
+                    ? const Color(0xFF0A2E5C).withValues(alpha: 0.9)
+                    : const Color(0xFF0A2E5C).withValues(alpha: 0.95),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -182,7 +201,7 @@ class _AdminWalletOverviewScreenState
                     Text(
                       'Across ${_users.length} active users',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 12,
                       ),
                     ),
@@ -202,8 +221,8 @@ class _AdminWalletOverviewScreenState
                     padding: const EdgeInsets.only(bottom: 8),
                     child: GlassCard(
                       backgroundColor: isDark
-                          ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                          : Colors.white.withOpacity(0.85),
+                          ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                          : Colors.white.withValues(alpha: 0.85),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor:

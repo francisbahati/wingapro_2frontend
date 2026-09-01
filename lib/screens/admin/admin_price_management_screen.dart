@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -25,8 +24,8 @@ class _AdminPriceManagementScreenState
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   List<dynamic> _customerPackages = [];
-  List<dynamic> _allPackages = [];
   bool _isLoading = true;
+  bool _isUpdating = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
@@ -55,13 +54,15 @@ class _AdminPriceManagementScreenState
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           final all = data['packages'] ?? [];
-          setState(() {
-            _allPackages = all;
-            _customerPackages = all
-                .where((pkg) => pkg['packageType'] == 'customer')
-                .toList();
-            _isLoading = false;
-          });
+          final customerPkgs = all
+              .where((pkg) => pkg['packageType'] == 'customer')
+              .toList();
+          if (mounted) {
+            setState(() {
+              _customerPackages = customerPkgs;
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -76,16 +77,19 @@ class _AdminPriceManagementScreenState
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchPackages);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _updatePackagePair(dynamic customerPkg, Map<String, dynamic> updates) async {
+    setState(() => _isUpdating = true);
     try {
       final token = await _auth.getToken();
       if (token == null) throw ApiException(statusCode: 401, message: 'Not logged in');
@@ -99,11 +103,13 @@ class _AdminPriceManagementScreenState
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
         _fetchPackages();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Prices updated successfully'),
-              backgroundColor: Colors.green),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Prices updated successfully'),
+                backgroundColor: Colors.green),
+          );
+        }
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -111,7 +117,9 @@ class _AdminPriceManagementScreenState
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
@@ -129,20 +137,22 @@ class _AdminPriceManagementScreenState
     TextEditingController(text: customerPkg['validity'] ?? '');
     String selectedNetwork = customerPkg['network'] ?? 'Halotel';
     bool isActive = customerPkg['is_active'] ?? true;
+    bool isSubmitting = false;
 
     showDialog(
       context: context,
+      barrierDismissible: !isSubmitting,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: Text('Edit Prices - ${customerPkg['name']}'),
           backgroundColor: isDark
-              ? const Color(0xFF1A1A2E).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -158,7 +168,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Package Name *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -174,7 +184,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Customer Price (TZS) *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -190,7 +200,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Seller Price (TZS) *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -205,7 +215,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Data Size (e.g., 10GB) *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -220,7 +230,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Validity (e.g., 30 days) *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -230,7 +240,7 @@ class _AdminPriceManagementScreenState
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: selectedNetwork,
+                    initialValue: selectedNetwork,
                     items: ['Halotel', 'Tigo', 'Vodacom', 'Airtel']
                         .map((n) => DropdownMenuItem(value: n, child: Text(n)))
                         .toList(),
@@ -239,7 +249,7 @@ class _AdminPriceManagementScreenState
                       labelText: 'Network *',
                       filled: true,
                       fillColor: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -280,9 +290,12 @@ class _AdminPriceManagementScreenState
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             ElevatedButton(
-              onPressed: () async {
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
                 final name = nameController.text.trim();
                 final customerPrice =
                 double.tryParse(customerPriceController.text.trim());
@@ -312,6 +325,7 @@ class _AdminPriceManagementScreenState
                   );
                   return;
                 }
+                setStateDialog(() => isSubmitting = true);
                 Navigator.pop(ctx);
                 await _updatePackagePair(customerPkg, {
                   'name': name,
@@ -323,7 +337,10 @@ class _AdminPriceManagementScreenState
                   'is_active': isActive,
                 });
               },
-              child: const Text('Update'),
+              child: isSubmitting
+                  ? const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Update'),
             ),
           ],
         ),
@@ -390,8 +407,8 @@ class _AdminPriceManagementScreenState
 
             return GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF1A1A2E).withOpacity(0.85)
-                  : Colors.white.withOpacity(0.85),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
               child: ListTile(
                 title: Text(
                   p['name'] ?? 'Package',
@@ -453,8 +470,17 @@ class _AdminPriceManagementScreenState
                   ],
                 ),
                 trailing: IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue),
-                  onPressed: () => _showEditDialog(p),
+                  icon: _isUpdating
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2),
+                  )
+                      : const Icon(Icons.edit, color: Colors.blue),
+                  onPressed: _isUpdating
+                      ? null
+                      : () => _showEditDialog(p),
                 ),
                 isThreeLine: true,
               ),

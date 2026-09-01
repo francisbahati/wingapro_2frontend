@@ -1,7 +1,6 @@
 // lib/screens/buyer/buyer_profile_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
@@ -27,16 +26,16 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
   final ApiService _api = ApiService();
   Map<String, dynamic>? _user;
   bool _isLoading = true;
+  bool _isChangingPassword = false;
+  bool _isLoggingOut = false;
   String? _errorTitle;
   String? _errorMessage;
   VoidCallback? _retryAction;
-  bool _isLoggingOut = false;
 
   // Change password controllers
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
-  bool _isChangingPassword = false;
   bool _obscureOldPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
@@ -72,7 +71,9 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() { _user = data['user']; _isLoading = false; });
+          if (mounted) {
+            setState(() { _user = data['user']; _isLoading = false; });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -87,12 +88,14 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchProfile);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -137,7 +140,7 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
         _oldPasswordController.clear();
         _newPasswordController.clear();
         _confirmPasswordController.clear();
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
       } else {
         throw ApiException(
           statusCode: response.statusCode,
@@ -145,13 +148,14 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
         );
       }
     } catch (e) {
-      showErrorSnackbar(context, e);
+      if (mounted) showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isChangingPassword = false);
     }
   }
 
   void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: color),
     );
@@ -171,12 +175,12 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Change Password'),
           backgroundColor: isDark
-              ? const Color(0xFF0A1A2B).withOpacity(0.95)
-              : Colors.white.withOpacity(0.95),
+              ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.95),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.15) : Colors.grey.shade300.withOpacity(0.5),
+              color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300.withValues(alpha: 0.5),
               width: 1.5,
             ),
           ),
@@ -191,7 +195,7 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
                   decoration: InputDecoration(
                     labelText: 'Current Password *',
                     filled: true,
-                    fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                    fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -209,7 +213,7 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
                   decoration: InputDecoration(
                     labelText: 'New Password *',
                     filled: true,
-                    fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                    fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -232,7 +236,7 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
                   decoration: InputDecoration(
                     labelText: 'Confirm New Password *',
                     filled: true,
-                    fillColor: isDark ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade100,
+                    fillColor: isDark ? Colors.grey.shade800.withValues(alpha: 0.5) : Colors.grey.shade100,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -276,7 +280,7 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
     setState(() => _isLoggingOut = true);
     await _auth.logout();
     NotificationService().stopPolling();
-    if (context.mounted) {
+    if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -339,8 +343,8 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
 
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: ListTile(
                 leading: const Icon(Icons.lock_outline, color: Color(0xFF0A2E5C)),
                 title: const Text('Change Password'),
@@ -352,8 +356,8 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
 
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: ListTile(
                 leading: const Icon(Icons.share, color: Color(0xFF0A2E5C)),
                 title: const Text('Referral Code'),
@@ -370,8 +374,8 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
 
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: ListTile(
                 leading: const Icon(Icons.settings, color: Color(0xFF0A2E5C)),
                 title: const Text('Settings'),
@@ -388,13 +392,19 @@ class _BuyerProfileScreenState extends State<BuyerProfileScreen> {
 
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.95),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.95),
               child: ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
+                leading: _isLoggingOut
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                )
+                    : const Icon(Icons.logout, color: Colors.red),
                 title: const Text('Logout', style: TextStyle(color: Colors.red)),
                 trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                onTap: _logout,
+                onTap: _isLoggingOut ? null : _logout,
               ),
             ),
           ],

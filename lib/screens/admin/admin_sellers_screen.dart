@@ -9,6 +9,7 @@ import '../../services/error_handler.dart';
 import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/error_view.dart';
+import '../../widgets/error_snackbar.dart';
 
 class AdminSellersScreen extends StatefulWidget {
   const AdminSellersScreen({super.key});
@@ -26,6 +27,7 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
   String? _errorMessage;
   VoidCallback? _retryAction;
   String _searchQuery = '';
+  bool _isVerifying = false;
 
   @override
   void initState() {
@@ -50,10 +52,12 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _sellers = data['sellers'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _sellers = data['sellers'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: response.statusCode,
@@ -68,12 +72,76 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchSellers);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // ─── Verify Seller Registration Payment ───
+  Future<void> _verifyPayment(int sellerId, String sellerName) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Verify Payment'),
+        content: Text('Mark registration payment as verified for $sellerName?'),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.15)
+                : Colors.grey.shade300.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Verify', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isVerifying = true);
+    try {
+      final token = await _auth.getToken();
+      final response = await _api.put(
+        context,
+        '${ApiConfig.baseUrl}/api/admin/sellers/$sellerId/verify-payment',
+      );
+      if (response.statusCode == 200) {
+        _fetchSellers();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Seller registration payment verified'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Failed to verify payment',
+        );
+      }
+    } catch (e) {
+      if (mounted) showErrorSnackbar(context, e);
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
     }
   }
 
@@ -152,7 +220,7 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: isDark
-                    ? Colors.grey.shade800.withOpacity(0.5)
+                    ? Colors.grey.shade800.withValues(alpha: 0.5)
                     : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -194,13 +262,14 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
                   final adoptedPackages =
                       seller['adoptedPackages'] as List? ?? [];
                   final balance = _parseBalance(seller['wallet_balance']);
+                  final isPaid = seller['seller_registration_paid'] ?? false;
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: GlassCard(
                       backgroundColor: isDark
-                          ? const Color(0xFF0A1A2B).withOpacity(0.85)
-                          : Colors.white.withOpacity(0.85),
+                          ? const Color(0xFF0A1A2B).withValues(alpha: 0.85)
+                          : Colors.white.withValues(alpha: 0.85),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -266,18 +335,14 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: seller[
-                                      'seller_registration_paid']
+                                      color: isPaid
                                           ? Colors.green
                                           : Colors.red,
                                       borderRadius:
                                       BorderRadius.circular(12),
                                     ),
                                     child: Text(
-                                      seller[
-                                      'seller_registration_paid']
-                                          ? 'Paid'
-                                          : 'Unpaid',
+                                      isPaid ? 'Paid' : 'Unpaid',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 10,
@@ -325,13 +390,13 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isDark
-                                      ? Colors.white.withOpacity(0.06)
+                                      ? Colors.white.withValues(alpha: 0.06)
                                       : Colors.grey.shade50,
                                   borderRadius:
                                   BorderRadius.circular(8),
                                   border: Border.all(
                                     color: isDark
-                                        ? Colors.white.withOpacity(0.08)
+                                        ? Colors.white.withValues(alpha: 0.08)
                                         : Colors.grey.shade200,
                                     width: 1,
                                   ),
@@ -407,6 +472,37 @@ class _AdminSellersScreenState extends State<AdminSellersScreen> {
                               ),
                             ),
                           ],
+                          const SizedBox(height: 8),
+                          // ─── Verify Payment Button (only if unpaid) ───
+                          if (!isPaid)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton.icon(
+                                onPressed: _isVerifying
+                                    ? null
+                                    : () => _verifyPayment(
+                                    seller['id'], seller['username']),
+                                icon: _isVerifying
+                                    ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white),
+                                )
+                                    : const Icon(Icons.verified, size: 18),
+                                label: _isVerifying
+                                    ? const Text('Verifying...')
+                                    : const Text('Verify Payment'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

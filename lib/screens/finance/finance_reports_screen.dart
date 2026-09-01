@@ -1,12 +1,11 @@
 // lib/screens/finance/finance_reports_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/api_config.dart';
 import '../../services/error_handler.dart';
-import '../../widgets/skeleton_loading.dart';  // Provides local Shimmer widget
+import '../../widgets/skeleton_loading.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/error_view.dart';
 
@@ -22,6 +21,7 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
   final AuthService _auth = AuthService();
   final ApiService _api = ApiService();
   bool _isLoading = true;
+  bool _isFiltering = false;
   Map<String, dynamic>? _financialReport;
   List<dynamic> _corporateReport = [];
   String? _errorTitle;
@@ -67,11 +67,13 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
         final finData = jsonDecode(finResp.body);
         final corpData = jsonDecode(corpResp.body);
         if (finData['success'] && corpData['success']) {
-          setState(() {
-            _financialReport = finData['report'];
-            _corporateReport = corpData['corporateReport'] ?? [];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _financialReport = finData['report'];
+              _corporateReport = corpData['corporateReport'] ?? [];
+              _isLoading = false;
+            });
+          }
         } else {
           throw ApiException(
             statusCode: 400,
@@ -86,12 +88,14 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
       }
     } catch (e) {
       final info = ErrorHandler.handle(e, onRetry: _fetchReports);
-      setState(() {
-        _errorTitle = info.title;
-        _errorMessage = info.message;
-        _retryAction = info.action;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorTitle = info.title;
+          _errorMessage = info.message;
+          _retryAction = info.action;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -103,8 +107,10 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) {
+      setState(() => _isFiltering = true);
       setState(() => _startDate = picked);
-      _fetchReports();
+      await _fetchReports();
+      if (mounted) setState(() => _isFiltering = false);
     }
   }
 
@@ -116,8 +122,10 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) {
+      setState(() => _isFiltering = true);
       setState(() => _endDate = picked);
-      _fetchReports();
+      await _fetchReports();
+      if (mounted) setState(() => _isFiltering = false);
     }
   }
 
@@ -125,8 +133,10 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
     setState(() {
       _startDate = null;
       _endDate = null;
+      _isFiltering = true;
     });
     _fetchReports();
+    if (mounted) setState(() => _isFiltering = false);
   }
 
   @override
@@ -134,7 +144,7 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget body = _isLoading
-        ? _buildSkeletonLoading()
+        ? _buildSkeletonLoading(isDark)
         : _errorTitle != null
         ? ErrorView(
       title: _errorTitle!,
@@ -151,13 +161,13 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: _selectStartDate,
+                  onTap: _isFiltering ? null : _selectStartDate,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 14),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -185,13 +195,13 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: GestureDetector(
-                  onTap: _selectEndDate,
+                  onTap: _isFiltering ? null : _selectEndDate,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 14),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? Colors.grey.shade800.withOpacity(0.5)
+                          ? Colors.grey.shade800.withValues(alpha: 0.5)
                           : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -217,8 +227,14 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: _clearDates,
+                icon: _isFiltering
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Icon(Icons.clear),
+                onPressed: _isFiltering ? null : _clearDates,
                 tooltip: 'Clear dates',
                 color: isDark ? Colors.white70 : Colors.grey,
               ),
@@ -228,8 +244,8 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
           if (_financialReport != null)
             GlassCard(
               backgroundColor: isDark
-                  ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                  : Colors.white.withOpacity(0.9),
+                  ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                  : Colors.white.withValues(alpha: 0.9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -292,8 +308,8 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
           const SizedBox(height: 16),
           GlassCard(
             backgroundColor: isDark
-                ? const Color(0xFF0A1A2B).withOpacity(0.95)
-                : Colors.white.withOpacity(0.9),
+                ? const Color(0xFF0A1A2B).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -382,8 +398,7 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
     );
   }
 
-  Widget _buildSkeletonLoading() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSkeletonLoading(bool isDark) {
     final baseColor = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
     final highlightColor = isDark ? Colors.grey.shade600 : Colors.grey.shade100;
 
@@ -397,7 +412,7 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
                 height: 50,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.grey.shade800.withOpacity(0.5)
+                      ? Colors.grey.shade800.withValues(alpha: 0.5)
                       : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -418,7 +433,7 @@ class _FinanceReportsScreenState extends State<FinanceReportsScreen> {
                 height: 50,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.grey.shade800.withOpacity(0.5)
+                      ? Colors.grey.shade800.withValues(alpha: 0.5)
                       : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                 ),
